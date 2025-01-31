@@ -20,7 +20,7 @@ This repository stores the source code for all the IVA tasks
         "object_tracking_output": {}      // Object Tracking Output (if task needs object tracking)
     }
     ```
-    - The output of your task must be added to the input data payload and must have a key `{TASK_ID}_output`. For example, `line_crossing` task's output should be added to input_payload['line_crossing_output'].  
+    - The output of your task must be added to the input data payload and must have a key `{TASK_ID}_output`. For example, `line_crossing` task's output should be added to `input_payload['line_crossing_output']`.  
     - Output topic should always be `task/{TASK_ID}/output/{CAMERA_ID}`
   - clearblade_mqtt_library.py - ClearBlade Adapter Library (No need to update this)
   - requirements.txt - List of dependencies required to run this task
@@ -28,5 +28,5 @@ This repository stores the source code for all the IVA tasks
 
 ## Running and testing a task locally  
 
-- Once you have your task folder setup, you can run the task using 
+- Once you have your task folder setup, you can run the task using: \
 ``` python -m venv ./venv && venv/bin/pip install -r requirements.txt && venv/bin/python mqtt_listener.py --platformURL=<platform-url> --messagingURL=<messaging-url> ```
