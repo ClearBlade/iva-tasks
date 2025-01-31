@@ -68,10 +68,12 @@ def detect_objects(input_frame, task_settings):
 
     class_assignment = get_class_assignments(objects)
     input_size, original_image_size, original_image, image_data = get_preprocessed_frame(input_frame, roi_coords)
-    input_name, output_names, sess = load_model('assets/yolov4.onnx')
+    
+    input_name, output_names, sess = load_model('assets/tiny-yolov4.onnx')
     detections = run_model(sess, output_names, input_name, image_data)
+    
     bboxes, image_with_bboxes = post_process_pipeline(detections, original_image_size, input_size, original_image, class_assignment, confidence_threshold/100)
-    cv2.imwrite('output.jpg', image_with_bboxes)
+    
     return image_with_bboxes, np.array(bboxes).tolist()
 
 if __name__ == '__main__':
