@@ -1,4 +1,5 @@
 import json
+import os
 import time
 
 from clearblade_mqtt_library import AdapterLibrary
@@ -30,7 +31,9 @@ def on_message(message):
 
 
 if __name__ == '__main__':   
-    load_dotenv(dotenv_path='../../.env')
+    if os.path.exists('../../.env'):
+        load_dotenv(dotenv_path='../../.env')
+
     adapter = AdapterLibrary(TASK_ID)
     adapter.parse_arguments()
     adapter.initialize_clearblade()
