@@ -22,7 +22,16 @@ def on_message(message):
     
     image, bboxes = detect_objects(convertB64ToFrame(frame), task_settings)
     data["frame"] = convertFrameToB64(image) # replacs the input frame with the new output frame that has the detected objects
-    data[f"{TASK_ID}_output"] = bboxes # box points of the detected objects
+    
+    count = 0
+    for obj in bboxes.items():
+        count += len(obj[1])
+
+    data[f"{TASK_ID}_output"] = {
+        "bboxes": bboxes, # box points of the detected objects
+        "objects_detected": [obj[0] for obj in bboxes.items()],
+        "total_objects_detected": count
+    }
 
     print('bbox: ', data[f"{TASK_ID}_output"])
     
