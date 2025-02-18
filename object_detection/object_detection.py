@@ -1,68 +1,108 @@
-import base64
 import cv2
 import numpy as np
 import time
 from ultralytics import YOLO
 
-#Global dictionaries to store models and trackers for each camera
 models = {}
 id_trackers = {}
 colors = {}
 
+class TrackingInfo:
+    def __init__(self, tracker_id, bbox, yolo_id=None):
+        self.tracker_id = tracker_id
+        self.bbox = bbox
+        self.yolo_id = yolo_id
+        
 class IDTracker:
-    def __init__(self, classifications, max_disappeared=2):
+    def __init__(self, classifications, distance_threshold=200):
         self.classifications = classifications
-        self.max_disappeared = max_disappeared
-        self.tracker_ids = {cls: {} for cls in classifications}
-        self.disappeared = {cls: {} for cls in classifications}
+        self.distance_threshold = distance_threshold
+        self.tracking_info = {cls: {} for cls in classifications}
+        self.untracked_objects = {cls: {} for cls in classifications}
+        self.previous_frame_info = {cls: {} for cls in classifications}
 
     def update(self, detections):
         current_yolo_ids = {cls: set() for cls in self.classifications}
-        # print("Yolo IDs:", detections)
-
-        for cls, yolo_id in detections:
-            current_yolo_ids[cls].add(yolo_id)
-
-            if yolo_id in self.tracker_ids[cls]:
-                tracker_id = self.tracker_ids[cls][yolo_id]
-                self.disappeared[cls][tracker_id] = 0
-            else:
-                if yolo_id != -1:
-                    new_tracker_id = self.get_next_available_id(cls)
-                    self.tracker_ids[cls][yolo_id] = new_tracker_id
-                    self.disappeared[cls][new_tracker_id] = 0
+        untracked_detections = []
+        new_tracking_info = {cls: {} for cls in self.classifications}
+        #First, handle all tracked objects
+        for cls, yolo_id, bbox in detections:
+            if yolo_id >= 0:
+                current_yolo_ids[cls].add(yolo_id)
+                if yolo_id in self.tracking_info[cls]:
+                    tracker_id = self.tracking_info[cls][yolo_id].tracker_id
                 else:
-                    pass
+                    tracker_id = self.handle_new_tracked_object(cls, yolo_id, bbox)
+                new_tracking_info[cls][yolo_id] = TrackingInfo(tracker_id, bbox, yolo_id)
+            else:
+                untracked_detections.append((cls, yolo_id, bbox))
+        #Handle untracked objects
+        self.update_pretracking(untracked_detections, new_tracking_info)
+        #Update tracking_info and previous_frame_info
+        self.tracking_info = new_tracking_info
+        self.previous_frame_info = {cls: {yolo_id: info for yolo_id, info in class_info.items()} for cls, class_info in self.tracking_info.items()}
+        return self.tracking_info
 
-        for cls in self.classifications:
-            for yolo_id, tracker_id in list(self.tracker_ids[cls].items()):
-                if yolo_id not in current_yolo_ids[cls]:
-                    self.disappeared[cls][tracker_id] += 1
-                    if self.disappeared[cls][tracker_id] > self.max_disappeared:
-                        del self.tracker_ids[cls][yolo_id]
-                        del self.disappeared[cls][tracker_id]
+    def update_pretracking(self, untracked_detections, new_tracking_info):
+        for cls, yolo_id, bbox in untracked_detections:
+            matched = False
+            for tracker_id, info in list(self.untracked_objects[cls].items()):
+                distance = get_distance_between_objects(bbox, info.bbox)
+                if distance <= self.distance_threshold:
+                    new_tracking_info[cls][yolo_id] = TrackingInfo(tracker_id, bbox, yolo_id)
+                    matched = True
+                    break
+            if not matched:
+                tracker_id = self.get_next_available_id(cls)
+                new_tracking_info[cls][yolo_id] = TrackingInfo(tracker_id, bbox, yolo_id)
+        #Update untracked_objects with new untracked detections
+        self.untracked_objects = {cls: {} for cls in self.classifications}
+        for cls, yolo_id in new_tracking_info.items():
+            for info in new_tracking_info[cls].values():
+                self.untracked_objects[cls][info.tracker_id] = info
 
-        return self.tracker_ids
+    def handle_new_tracked_object(self, cls, yolo_id, bbox):
+        for tracker_id, info in self.untracked_objects[cls].items():
+            distance = get_distance_between_objects(bbox, info.bbox)
+            if distance <= self.distance_threshold:
+                return tracker_id
+        return self.get_next_available_id(cls)
 
     def get_next_available_id(self, cls):
-        used_ids = set(self.tracker_ids[cls].values())
+        used_ids = set(info.tracker_id for info in self.tracking_info[cls].values())
+        used_ids.update(info.tracker_id for info in self.untracked_objects[cls].values())
         tracker_id = 1
         while tracker_id in used_ids:
             tracker_id += 1
         return tracker_id
 
+    def free_up_tracker_ids(self, new_tracking_info):
+        for cls in self.classifications:
+            current_tracker_ids = set(info.tracker_id for info in new_tracking_info[cls].values())
+            self.untracked_objects[cls] = {
+                tracker_id: info
+                for tracker_id, info in self.untracked_objects[cls].items()
+                if tracker_id in current_tracker_ids
+            }
+
     def get_tracker_id(self, cls, yolo_id):
-        return self.tracker_ids[cls].get(yolo_id, None)
+        if yolo_id in self.tracking_info[cls]:
+            return self.tracking_info[cls][yolo_id].tracker_id
+        else:
+            for tracker_id, info in self.untracked_objects[cls].items():
+                if info.yolo_id == yolo_id:
+                    return tracker_id
 
-def convertB64ToFrame(b64_string):
-    jpg_original = base64.b64decode(b64_string)
-    jpg_as_np = np.frombuffer(jpg_original, dtype=np.uint8)
-    img = cv2.imdecode(jpg_as_np, cv2.IMREAD_COLOR)
-    return img
-
-def convertFrameToB64(frame):
-    _, buffer = cv2.imencode('.jpg', frame)
-    return base64.b64encode(buffer).decode()
+def get_distance_between_objects(obj1, obj2):
+    #Calculate centroids
+    if obj1 is None or obj2 is None:
+        return 99999.0
+    centroid1 = ((obj1[0] + obj1[2]) / 2, (obj1[1] + obj1[3]) / 2)
+    centroid2 = ((obj2[0] + obj2[2]) / 2, (obj2[1] + obj2[3]) / 2)
+    #Calculate horizontal and vertical distances
+    hDistance = abs(centroid1[0] - centroid2[0])
+    vDistance = abs(centroid1[1] - centroid2[1])
+    return (hDistance**2 + vDistance**2)**0.5
 
 def get_model_and_tracker(camera_id, class_assignments, enable_tracking):
     if enable_tracking:
@@ -74,6 +114,13 @@ def get_model_and_tracker(camera_id, class_assignments, enable_tracking):
         if camera_id not in models:
             models[camera_id] = YOLO("assets/yolo11s.onnx", task='detect')
         return models[camera_id], None
+
+def get_face_model(blur_faces):
+    if blur_faces:
+        if "facial_anonymization" not in models:
+            models["facial_anonymization"] = YOLO("assets/yolo11n-head.onnx", task='detect')
+        return models["facial_anonymization"]
+    return None
 
 def get_colors(camera_id, class_assignments, frame, frame_shape):
     if camera_id not in colors:
@@ -116,7 +163,6 @@ def choose_colors(frame, box_coords, classes):
     luminance = calculate_luminance(avg_color)
     hsv_color = cv2.cvtColor(np.uint8([[avg_color]]), cv2.COLOR_BGR2HSV)[0][0]
     base_hue = hsv_color[0] / 2
-   
     all_colors = {}
     hue_step = 360 // 20  #Generate a palette
    
@@ -131,17 +177,13 @@ def choose_colors(frame, box_coords, classes):
         else:
             saturation = 0.8
             value = 1.0
-       
         rgb_color = hsv_to_rgb(hue, saturation, value)
         bgr_color = (int(rgb_color[2] * 255), int(rgb_color[1] * 255), int(rgb_color[0] * 255))
-       
         all_colors[i] = bgr_color
-   
     #Select color for each class
     colorPalette = {}
     predefined_indices = [1,7,15,5,11]  #Predefined palette members to guarantee hue variance for first 5 classes
     available_colors = list(range(10))
-   
     for i, class_name in enumerate(classes):
         if i < 5:
             color_key = predefined_indices[i]
@@ -149,7 +191,6 @@ def choose_colors(frame, box_coords, classes):
             color_key = np.random.choice(available_colors)
         available_colors.remove(color_key)
         colorPalette[class_name] = all_colors[color_key]
-   
     return colorPalette
 
 def read_class_names(class_file_name): #loads class names from file
@@ -167,75 +208,173 @@ def get_class_assignments(objects): #returns a dictionary of class assignments
             class_assignment[value] = key  #Use string label as key, numeric ID as value
     return class_assignment
 
-def detect_objects(camera_id, task_settings, input_frame, frame_shape):
-    objects = task_settings.get("objects_to_detect")
-    class_assignments = get_class_assignments(objects)
-    enable_tracking = task_settings.get("object_tracking", False)
+def draw_annotation(frame, overlay, label, bbox, colorPalette):
+    x1, y1, x2, y2 = bbox
+    class_label = ''.join([i for i in label if not i.isdigit()])
+    cv2.rectangle(frame, (x1, y1), (x2, y2), colorPalette[class_label], 2)
+    cv2.rectangle(overlay, (x1, y1), (x2, y2), colorPalette[class_label], 2)
+    text = f'{label.capitalize()}'
+    cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[class_label], 2, lineType=cv2.LINE_AA)
+    text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+    cv2.rectangle(overlay, (x1, y1 - 23 + text_size[1]), (x1 + text_size[0], y1 - 15 - text_size[1]), (42, 42, 42), -1)
+    cv2.putText(overlay, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[class_label], 2, lineType=cv2.LINE_AA)
 
-    model, id_tracker = get_model_and_tracker(camera_id, class_assignments, enable_tracking) #id_tracker is None if tracking is disabled
-    
-    confidence_threshold = task_settings.get("confidence_threshold", 0.65)
-    
-    if enable_tracking:
-        results = model.track(input_frame, persist=True, verbose=False)
-    else:
-        results = model(input_frame, verbose=False)
-    
-    annotated_frame = input_frame.copy()
-    annotated_frame_with_overlay = annotated_frame.copy()
+
+def create_ellipse_mask(height, width, box):
+    #draws an ellipse over the bounding box
+    mask = np.zeros((height, width), dtype=np.uint8)
+    x1, y1, x2, y2 = map(int, box)
+    center = ((x1 + x2) // 2, (y1 + y2) // 2)
+    ellipse_width = int((x2 - x1) / 1.875)
+    ellipse_height = int((y2 - y1) / 1.875)
+    cv2.ellipse(mask, center, (ellipse_width, ellipse_height), 0, 0, 360, 255, -1)
+    return mask
+
+def pixelate(image, mask, avg_color, block_size=9):
+    h, w = image.shape[:2]
+    base = np.full((h, w, 3), avg_color, dtype=np.uint8)
+    masked_image = np.where(mask[:,:,np.newaxis] > 0, image, base)
+    small = cv2.resize(masked_image, (w // block_size, h // block_size), interpolation=cv2.INTER_LINEAR)
+    return cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
+
+def create_gradient(height, width, mask, avg_color):
+    base = np.full((height, width, 3), avg_color, dtype=np.uint8)
+    y, x = np.ogrid[:height, :width]
+    center = (width // 2, height // 2)
+    distances = np.sqrt((x - center[0])**2 + (y - center[1])**2)
+    max_distance = np.max(distances[mask > 0])
+    normalized_distances = distances / max_distance
+    gradient = (1 - normalized_distances[:,:,np.newaxis]) * avg_color
+    gradient = np.where(mask[:,:,np.newaxis] > 0, gradient, base)
+    return gradient.astype(np.uint8)
+
+def apply_blur(image, boxes):
+    result = image.copy()
+    height, width = image.shape[:2]
+    for box in boxes:
+        x1, y1, x2, y2 = map(int, box)
+        box_xywh = [x1, y1, x2-x1, y2-y1]
+        avg_color = get_average_color(image, box_xywh)
+        mask = create_ellipse_mask(height, width, [x1, y1, x2, y2])
+        pixelated = pixelate(image, mask, avg_color)
+        gradient = create_gradient(height, width, mask, avg_color)
+        combined = cv2.addWeighted(pixelated, 0.5, gradient, 0.5, 0)
+        result = np.where(mask[:,:,np.newaxis] > 0, combined, result)
+    return result
+
+def detect_faces(face_model, image, confidence_threshold=0.001):
+    results = face_model(image, verbose=False)
+    face_boxes = []
+    for result in results:
+        for detection in result.boxes:
+            if detection.conf.item() > confidence_threshold:
+                x1, y1, x2, y2 = map(int, detection.xyxy[0].tolist())
+                face_boxes.append([x1, y1, x2, y2])
+    return face_boxes
+
+def get_detections(results, confidence_threshold, class_assignments, enable_tracking):
     detections = []
     bboxes = {}
     objects_detected = set()
-    colorPalette = get_colors(camera_id, objects, input_frame, frame_shape)
-    
+    untracked_id = -1
     for result in results:
         for detection in result.boxes:
             if detection.conf.item() > confidence_threshold and int(detection.cls.item()) in class_assignments.values():
                 cls_id = int(detection.cls.item())
                 class_label = next(key for key, value in class_assignments.items() if value == cls_id)
                 x1, y1, x2, y2 = map(int, detection.xyxy[0].tolist())
+                bbox = [x1, y1, x2, y2]
                 if enable_tracking:
-                    yolo_id = int(detection.id.item() if detection.id is not None else -1)
-                    detections.append((class_label, yolo_id))
-                    tracker_id = id_tracker.get_tracker_id(class_label, yolo_id)
-                    label = f"{class_label}{tracker_id if tracker_id else ''}"
-                    bboxes[label] = [x1, y1, x2, y2]
+                    yolo_id = int(detection.id.item() if detection.id is not None else untracked_id)
+                    if yolo_id < 1:
+                        untracked_id -= 1
+                    detections.append((class_label, yolo_id, bbox))
                 else:
                     if class_label not in bboxes:
                         bboxes[class_label] = []
-                    bboxes[class_label].append([x1, y1, x2, y2])
-                
+                    bboxes[class_label].append(bbox)
                 objects_detected.add(class_label)
-                #Draw bounding box and label
-                cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), colorPalette[class_label], 2)
-                cv2.rectangle(annotated_frame_with_overlay, (x1, y1), (x2, y2), colorPalette[class_label], 2)
-                text = f'{class_label.capitalize()}{tracker_id if enable_tracking and tracker_id else ""} {detection.conf.item():.2f}'
-                cv2.putText(annotated_frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[class_label], 2, lineType = cv2.LINE_AA)
-                text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
-                
-                cv2.rectangle(annotated_frame_with_overlay, (x1, y1 - 23 + text_size[1]), (x1 + text_size[0], y1 - 15 - text_size[1]), (42, 42, 42), -1)
-                cv2.putText(annotated_frame_with_overlay, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[class_label], 2, lineType = cv2.LINE_AA)
-    
-    alpha = 0.35
-    result_image = cv2.addWeighted(annotated_frame_with_overlay, alpha, annotated_frame, 1 - alpha, 0)
+    return detections, bboxes, objects_detected
 
+def update_tracker(enable_tracking, id_tracker, detections, bboxes):
     if enable_tracking:
         id_tracker.update(detections)
+        for class_label, yolo_id, bbox in detections:
+            tracker_id = id_tracker.get_tracker_id(class_label, yolo_id)
+            label = f"{class_label}{tracker_id}"
+            bboxes[label] = bbox
+    return bboxes
+
+def blur_all_faces(blur_faces, objects, objects_detected, bboxes, input_frame):
+    if not blur_faces:
+        return input_frame.copy()
+    face_model = get_face_model(blur_faces)
+    detects_people = "person" in objects
+    if detects_people and "person" in objects_detected:
+        face_boxes = []
+        for label, bbox in bboxes.items():
+            if label.startswith("person"):
+                if isinstance(bbox[0], list):
+                    for box in bbox:
+                        x1, y1, x2, y2 = box
+                        person_roi = input_frame[y1:y2, x1:x2]
+                        face_boxes_in_roi = detect_faces(face_model, person_roi)
+                        for face_box in face_boxes_in_roi:
+                            face_boxes.append([x1 + face_box[0], y1 + face_box[1], x1 + face_box[2], y1 + face_box[3]])
+                else:
+                    x1, y1, x2, y2 = bbox
+                    person_roi = input_frame[y1:y2, x1:x2]
+                    face_boxes_in_roi = detect_faces(face_model, person_roi)
+                    for face_box in face_boxes_in_roi:
+                        face_boxes.append([x1 + face_box[0], y1 + face_box[1], x1 + face_box[2], y1 + face_box[3]])
+        blurred_frame = apply_blur(input_frame, face_boxes)
+    elif not detects_people:
+        face_boxes = detect_faces(face_model, input_frame)
+        blurred_frame = apply_blur(input_frame, face_boxes)
+    else:
+        blurred_frame = input_frame.copy()
+    return blurred_frame
+
+def draw_annotations_and_overlay(annotated_frame, bboxes, colorPalette):
+    annotated_frame_with_overlay = annotated_frame.copy()
+    for label, bbox in bboxes.items():
+        if isinstance(bbox[0], list):
+            for box in bbox:
+                draw_annotation(annotated_frame, annotated_frame_with_overlay, label, box, colorPalette)
+        else:
+            draw_annotation(annotated_frame, annotated_frame_with_overlay, label, bbox, colorPalette)
+    alpha = 0.35
+    result_image = cv2.addWeighted(annotated_frame_with_overlay, alpha, annotated_frame, 1 - alpha, 0)
+    return result_image
+
+def get_total_objects(enable_tracking, bboxes):
+    if enable_tracking:
         total_objects = len(bboxes)
     else:
         total_objects = sum(len(boxes) if isinstance(boxes, list) else 1 for boxes in bboxes.values())
-    
+    return total_objects
 
-
-    #Uncomment the lines below to save the annotated frame to a file
-    #frame_name = time.strftime("%Y%m%d-%H%M%S") + str(time.time() % 1)[1:3]
-    #cv2.imwrite(f"{frame_name}.jpg", result_image)
-    #print("image saved as: ", f"{frame_name}.jpg")
-    
+def detect_objects(camera_id, task_settings, input_frame, frame_shape):
+    objects = task_settings.get("objects_to_detect")
+    class_assignments = get_class_assignments(objects)
+    enable_tracking = task_settings.get("object_tracking", False)
+    blur_faces = task_settings.get("blur_faces", False)
+    model, id_tracker = get_model_and_tracker(camera_id, class_assignments, enable_tracking)    
+    confidence_threshold = task_settings.get("confidence_threshold", 0.65)    
+    if enable_tracking:
+        results = model.track(input_frame, persist=True, verbose=False)
+    else:
+        results = model(input_frame, verbose=False)
+    colorPalette = get_colors(camera_id, objects, input_frame, frame_shape)
+    detections, bboxes, objects_detected = get_detections(results, confidence_threshold, class_assignments, enable_tracking)
+    bboxes = update_tracker(enable_tracking, id_tracker, detections, bboxes)
+    blurred_frame = blur_all_faces(blur_faces, objects, objects_detected, bboxes, input_frame) #if blur_faces is False, this function will return the input_frame as is
+    result_image = draw_annotations_and_overlay(blurred_frame, bboxes, colorPalette)
+    total_objects = get_total_objects(enable_tracking, bboxes)
+    frame_name = time.strftime("%Y%m%d-%H%M%S") + str(time.time() % 1)[1:3]
+    cv2.imwrite(f"{frame_name}.jpg", result_image)
+    print("image saved as: ", f"{frame_name}.jpg")
     return result_image, bboxes, list(objects_detected), total_objects
-
-
-
 
 if __name__ == '__main__':
     #Test code here if needed
