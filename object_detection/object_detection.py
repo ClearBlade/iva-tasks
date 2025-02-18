@@ -371,9 +371,6 @@ def detect_objects(camera_id, task_settings, input_frame, frame_shape):
     blurred_frame = blur_all_faces(blur_faces, objects, objects_detected, bboxes, input_frame) #if blur_faces is False, this function will return the input_frame as is
     result_image = draw_annotations_and_overlay(blurred_frame, bboxes, colorPalette)
     total_objects = get_total_objects(enable_tracking, bboxes)
-    frame_name = time.strftime("%Y%m%d-%H%M%S") + str(time.time() % 1)[1:3]
-    cv2.imwrite(f"{frame_name}.jpg", result_image)
-    print("image saved as: ", f"{frame_name}.jpg")
     return result_image, bboxes, list(objects_detected), total_objects
 
 if __name__ == '__main__':
