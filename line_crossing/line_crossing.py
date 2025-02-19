@@ -38,12 +38,6 @@ def is_point_on_side_B(line, point):
 def determine_direction(line, prev_point, curr_point):
     prev_on_B = is_point_on_side_B(line, prev_point)
     curr_on_B = is_point_on_side_B(line, curr_point)
-    # print('the line is', line)
-    # print('The previous point is', prev_point)
-    # print('The previous centroid is on side', 'B' if prev_on_B else 'A')
-    # print('The current point is', curr_point)
-    # print('The current centroid is on side', 'B' if curr_on_B else 'A')
-    
     if prev_on_B and not curr_on_B:
         return DIRECTION_B_TO_A
     elif not prev_on_B and curr_on_B:
@@ -107,7 +101,6 @@ def detect_crossing(line, current_box, previous_box):
                      (current_box[1] + current_box[3]) / 2)
     direction = determine_direction(line, prev_center, curr_center)
     if direction: #past and current centroids are on different sides of the line, potential crossing
-        # print('POTENTIAL CROSSING DETECTED!!!')
         current_vertices = get_important_vertices(line, current_box)
         previous_vertices = get_important_vertices(line, previous_box)
         
@@ -218,7 +211,6 @@ class CameraTracker:
             #The text needs to be centered on A and B
             #so adjust the coordinates accordingly
             if A[1] < B[1]:
-                #A is probably never above B, need to verify
                 A = (A[0] - 20, A[1])
                 B = (B[0] - 20, B[1] + v_offset)
             else:

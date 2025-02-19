@@ -6,6 +6,7 @@ from ultralytics import YOLO
 models = {}
 id_trackers = {}
 colors = {}
+supported_blur_classes = ["person"]
 
 class TrackingInfo:
     def __init__(self, tracker_id, bbox, yolo_id=None):
@@ -19,14 +20,13 @@ class IDTracker:
         self.distance_threshold = distance_threshold
         self.tracking_info = {cls: {} for cls in classifications}
         self.untracked_objects = {cls: {} for cls in classifications}
-        self.previous_frame_info = {cls: {} for cls in classifications}
 
     def update(self, detections):
         current_yolo_ids = {cls: set() for cls in self.classifications}
         untracked_detections = []
         new_tracking_info = {cls: {} for cls in self.classifications}
         #First, handle all tracked objects
-        for cls, yolo_id, bbox in detections:
+        for cls, yolo_id, bbox, _ in detections:
             if yolo_id >= 0:
                 current_yolo_ids[cls].add(yolo_id)
                 if yolo_id in self.tracking_info[cls]:
@@ -38,9 +38,8 @@ class IDTracker:
                 untracked_detections.append((cls, yolo_id, bbox))
         #Handle untracked objects
         self.update_pretracking(untracked_detections, new_tracking_info)
-        #Update tracking_info and previous_frame_info
+        #Update tracking_info
         self.tracking_info = new_tracking_info
-        self.previous_frame_info = {cls: {yolo_id: info for yolo_id, info in class_info.items()} for cls, class_info in self.tracking_info.items()}
         return self.tracking_info
 
     def update_pretracking(self, untracked_detections, new_tracking_info):
@@ -208,16 +207,17 @@ def get_class_assignments(objects): #returns a dictionary of class assignments
             class_assignment[value] = key  #Use string label as key, numeric ID as value
     return class_assignment
 
-def draw_annotation(frame, overlay, label, bbox, colorPalette):
+def draw_annotation(frame, overlay, label, bbox, colorPalette, object_settings, cls):
     x1, y1, x2, y2 = bbox
-    class_label = ''.join([i for i in label if not i.isdigit()])
-    cv2.rectangle(frame, (x1, y1), (x2, y2), colorPalette[class_label], 2)
-    cv2.rectangle(overlay, (x1, y1), (x2, y2), colorPalette[class_label], 2)
-    text = f'{label.capitalize()}'
-    cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[class_label], 2, lineType=cv2.LINE_AA)
-    text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
-    cv2.rectangle(overlay, (x1, y1 - 23 + text_size[1]), (x1 + text_size[0], y1 - 15 - text_size[1]), (42, 42, 42), -1)
-    cv2.putText(overlay, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[class_label], 2, lineType=cv2.LINE_AA)
+    if object_settings.get("show_boxes", True):
+        cv2.rectangle(frame, (x1, y1), (x2, y2), colorPalette[cls], 2)
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), colorPalette[cls], 2)
+    if object_settings.get("show_labels", True):
+        text = f'{label.capitalize()}   '
+        cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+        text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+        cv2.rectangle(overlay, (x1, y1 - 23 + text_size[1]), (x1 + text_size[0] - 45, y1 - 15 - text_size[1]), (42, 42, 42), -1)
+        cv2.putText(overlay, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
 
 
 def create_ellipse_mask(height, width, box):
@@ -272,105 +272,132 @@ def detect_faces(face_model, image, confidence_threshold=0.001):
                 face_boxes.append([x1, y1, x2, y2])
     return face_boxes
 
-def get_detections(results, confidence_threshold, class_assignments, enable_tracking):
+def get_detections(results, class_assignments, objects_settings):
     detections = []
     bboxes = {}
+    confidence_scores = {}
     objects_detected = set()
     untracked_id = -1
     for result in results:
         for detection in result.boxes:
-            if detection.conf.item() > confidence_threshold and int(detection.cls.item()) in class_assignments.values():
+            if int(detection.cls.item()) in class_assignments.values():
                 cls_id = int(detection.cls.item())
                 class_label = next(key for key, value in class_assignments.items() if value == cls_id)
-                x1, y1, x2, y2 = map(int, detection.xyxy[0].tolist())
-                bbox = [x1, y1, x2, y2]
-                if enable_tracking:
-                    yolo_id = int(detection.id.item() if detection.id is not None else untracked_id)
-                    if yolo_id < 1:
-                        untracked_id -= 1
-                    detections.append((class_label, yolo_id, bbox))
-                else:
-                    if class_label not in bboxes:
-                        bboxes[class_label] = []
-                    bboxes[class_label].append(bbox)
-                objects_detected.add(class_label)
-    return detections, bboxes, objects_detected
+                confidence_score = detection.conf.item()
+                if confidence_score > objects_settings[class_label].get("confidence_threshold", 0.65):
+                    x1, y1, x2, y2 = map(int, detection.xyxy[0].tolist())
+                    bbox = [x1, y1, x2, y2]
+                    if objects_settings[class_label].get("enable_tracking", False):
+                        yolo_id = int(detection.id.item() if detection.id is not None else untracked_id)
+                        if yolo_id < 1:
+                            untracked_id -= 1
+                        #detections only get added to the list if they are tracked
+                        detections.append((class_label, yolo_id, bbox, confidence_score))
+                    else:
+                        if class_label not in bboxes:
+                            bboxes[class_label] = []
+                        if class_label not in confidence_scores:
+                            confidence_scores[class_label] = []
+                        bboxes[class_label].append(bbox)
+                        confidence_scores[class_label].append(confidence_score)
+                    objects_detected.add(class_label)
+    return detections, bboxes, objects_detected, confidence_scores
 
-def update_tracker(enable_tracking, id_tracker, detections, bboxes):
+def update_tracker(objects_settings, id_tracker, detections, bboxes, confidence_scores):
+    enable_tracking = any(objects_settings[obj].get("enable_tracking", False) for obj in objects_settings)
     if enable_tracking:
+        confidence_scores = {}
         id_tracker.update(detections)
-        for class_label, yolo_id, bbox in detections:
+        for class_label, yolo_id, bbox, confidence_score in detections:
             tracker_id = id_tracker.get_tracker_id(class_label, yolo_id)
             label = f"{class_label}{tracker_id}"
             bboxes[label] = bbox
-    return bboxes
+            confidence_scores[label] = confidence_score
+    return bboxes, confidence_scores
 
-def blur_all_faces(blur_faces, objects, objects_detected, bboxes, input_frame):
-    if not blur_faces:
+def blur_objects(needs_blur, objects, objects_detected, bboxes, input_frame):
+    if not needs_blur:
         return input_frame.copy()
-    face_model = get_face_model(blur_faces)
-    detects_people = "person" in objects
-    if detects_people and "person" in objects_detected:
-        face_boxes = []
-        for label, bbox in bboxes.items():
-            if label.startswith("person"):
-                if isinstance(bbox[0], list):
-                    for box in bbox:
-                        x1, y1, x2, y2 = box
+    if "person" in objects:
+        face_model = get_face_model(needs_blur)
+        detects_people = "person" in objects
+        if detects_people and "person" in objects_detected:
+            face_boxes = []
+            for label, bbox in bboxes.items():
+                if label.startswith("person"):
+                    if isinstance(bbox[0], list):
+                        for box in bbox:
+                            x1, y1, x2, y2 = box
+                            person_roi = input_frame[y1:y2, x1:x2]
+                            face_boxes_in_roi = detect_faces(face_model, person_roi)
+                            for face_box in face_boxes_in_roi:
+                                face_boxes.append([x1 + face_box[0], y1 + face_box[1], x1 + face_box[2], y1 + face_box[3]])
+                    else:
+                        x1, y1, x2, y2 = bbox
                         person_roi = input_frame[y1:y2, x1:x2]
                         face_boxes_in_roi = detect_faces(face_model, person_roi)
                         for face_box in face_boxes_in_roi:
                             face_boxes.append([x1 + face_box[0], y1 + face_box[1], x1 + face_box[2], y1 + face_box[3]])
-                else:
-                    x1, y1, x2, y2 = bbox
-                    person_roi = input_frame[y1:y2, x1:x2]
-                    face_boxes_in_roi = detect_faces(face_model, person_roi)
-                    for face_box in face_boxes_in_roi:
-                        face_boxes.append([x1 + face_box[0], y1 + face_box[1], x1 + face_box[2], y1 + face_box[3]])
-        blurred_frame = apply_blur(input_frame, face_boxes)
-    elif not detects_people:
-        face_boxes = detect_faces(face_model, input_frame)
-        blurred_frame = apply_blur(input_frame, face_boxes)
+            blurred_frame = apply_blur(input_frame, face_boxes)
+        elif not detects_people:
+            face_boxes = detect_faces(face_model, input_frame)
+            blurred_frame = apply_blur(input_frame, face_boxes)
+        else:
+            blurred_frame = input_frame.copy()
+    #elif "other_class" in objects:
+        #only person is supported for now
     else:
         blurred_frame = input_frame.copy()
     return blurred_frame
 
-def draw_annotations_and_overlay(annotated_frame, bboxes, colorPalette):
+def draw_annotations_and_overlay(annotated_frame, bboxes, colorPalette, objects_settings, confidence_scores):
     annotated_frame_with_overlay = annotated_frame.copy()
     for label, bbox in bboxes.items():
+        #cls is label with the number removed from the end
+        cls = ''.join([i for i in label if not i.isdigit()])
+        #object label is label if object_settings[cls][show_labels] is True, otherwise it's ''
+        object_label = label if objects_settings[cls].get("show_labels", True) else ''
         if isinstance(bbox[0], list):
-            for box in bbox:
-                draw_annotation(annotated_frame, annotated_frame_with_overlay, label, box, colorPalette)
+            for i in range(len(bbox)):
+                #add 4 spaces then confidence score to object label if it is not ''
+                object_label = f"{label}    {confidence_scores[cls][i]:.2f}" if object_label else ''
+                draw_annotation(annotated_frame, annotated_frame_with_overlay, object_label, bbox[i], colorPalette, objects_settings[cls], cls)
         else:
-            draw_annotation(annotated_frame, annotated_frame_with_overlay, label, bbox, colorPalette)
+            object_label = f"{label}    {confidence_scores[label]:.2f}" if object_label else ''
+            draw_annotation(annotated_frame, annotated_frame_with_overlay, object_label, bbox, colorPalette, objects_settings[cls], cls)
     alpha = 0.35
     result_image = cv2.addWeighted(annotated_frame_with_overlay, alpha, annotated_frame, 1 - alpha, 0)
     return result_image
 
-def get_total_objects(enable_tracking, bboxes):
-    if enable_tracking:
-        total_objects = len(bboxes)
-    else:
-        total_objects = sum(len(boxes) if isinstance(boxes, list) else 1 for boxes in bboxes.values())
+def get_total_objects(bboxes):
+    total_objects = 0
+    for label, bbox in bboxes.items():
+        total_objects += len(bbox) if isinstance(bbox[0], list) else 1
     return total_objects
 
-def detect_objects(camera_id, task_settings, input_frame, frame_shape):
-    objects = task_settings.get("objects_to_detect")
+def detect_objects(camera_id, task_settings, input_frame, frame_shape, roi=None):
+    if roi is not None:
+        input_frame = input_frame[roi[1]:roi[3], roi[0]:roi[2]]
+    objects_settings = task_settings.get("objects_to_detect")
+    objects = list(objects_settings.keys())
+    #annotated_objects holds all members of objects where their object_settings[show_boxes] or object_settings[show_labels] is True
+    annotated_objects = [obj for obj in objects if objects_settings[obj].get("show_boxes", False) or objects_settings[obj].get("show_labels", False)]
+    blur_enabled_objects = [obj for obj in objects if objects_settings[obj].get("enable_blur", False)]
     class_assignments = get_class_assignments(objects)
-    enable_tracking = task_settings.get("object_tracking", False)
-    blur_faces = task_settings.get("blur_faces", False)
+    enable_tracking = any(objects_settings[obj].get("enable_tracking", False) for obj in objects_settings)
+    #needs_blur is true if both objects has any supported_blur_classes and if for any of the supported_blur_classes in objects_settings, enable_blur is True
+    needs_blur = any(obj in blur_enabled_objects for obj in supported_blur_classes)
     model, id_tracker = get_model_and_tracker(camera_id, class_assignments, enable_tracking)    
-    confidence_threshold = task_settings.get("confidence_threshold", 0.65)    
     if enable_tracking:
         results = model.track(input_frame, persist=True, verbose=False)
     else:
         results = model(input_frame, verbose=False)
-    colorPalette = get_colors(camera_id, objects, input_frame, frame_shape)
-    detections, bboxes, objects_detected = get_detections(results, confidence_threshold, class_assignments, enable_tracking)
-    bboxes = update_tracker(enable_tracking, id_tracker, detections, bboxes)
-    blurred_frame = blur_all_faces(blur_faces, objects, objects_detected, bboxes, input_frame) #if blur_faces is False, this function will return the input_frame as is
-    result_image = draw_annotations_and_overlay(blurred_frame, bboxes, colorPalette)
-    total_objects = get_total_objects(enable_tracking, bboxes)
+    colorPalette = get_colors(camera_id, annotated_objects, input_frame, frame_shape)
+    detections, bboxes, objects_detected, confidence_scores = get_detections(results, class_assignments, objects_settings)
+    bboxes, confidence_scores = update_tracker(objects_settings, id_tracker, detections, bboxes, confidence_scores)
+    blurred_frame = blur_objects(needs_blur, blur_enabled_objects, objects_detected, bboxes, input_frame) #if blur_faces is False, this function will return the input_frame as is
+    result_image = draw_annotations_and_overlay(blurred_frame, bboxes, colorPalette, objects_settings, confidence_scores)
+    total_objects = get_total_objects(bboxes)
     return result_image, bboxes, list(objects_detected), total_objects
 
 if __name__ == '__main__':

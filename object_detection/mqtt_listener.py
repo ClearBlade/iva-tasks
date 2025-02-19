@@ -21,9 +21,10 @@ def handle_sigterm(signum, frame):
 def on_message(message):
     data = json.loads(message.payload.decode())
     camera_id = data.get('camera_id')
+    task_uuid = data.get('uuid')
     task_settings = data.get('task_settings', {})
     frame_shape = data.get('frame_shape')
-    existing_mem = shm.SharedMemory(name=f'{camera_id}_frame')
+    existing_mem = shm.SharedMemory(name=f'{task_uuid}_frame')
     image = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
     if not image.any():
         print('Invalid frame data')
