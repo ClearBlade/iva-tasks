@@ -97,12 +97,12 @@ def get_model_and_tracker(camera_id, class_assignments, enable_tracking):
     #if at least one object has enable_tracking set to True, then all objects will be tracked, we will only display the tracking data for those with it enabled
     if enable_tracking:
         if camera_id not in models:
-            models[camera_id] = YOLO("assets/yolo11s.onnx", task='detect')
+            models[camera_id] = YOLO("assets/yolo12s.onnx", task='detect')
             id_trackers[camera_id] = IDTracker(class_assignments.keys())
         return models[camera_id], id_trackers[camera_id]
     else:
         if camera_id not in models:
-            models[camera_id] = YOLO("assets/yolo11s.onnx", task='detect')
+            models[camera_id] = YOLO("assets/yolo12s.onnx", task='detect')
         return models[camera_id], None
 
 def get_colors(camera_id, class_assignments, frame, frame_shape):
@@ -191,17 +191,32 @@ def get_class_assignments(objects): #returns a dictionary of class assignments
             class_assignment[value] = key  #Use string label as key, numeric ID as value
     return class_assignment
 
-def draw_annotation(frame, overlay, label, bbox, colorPalette, object_settings, cls):
+def draw_annotation(frame, overlay, label, conf, bbox, colorPalette, object_settings, cls):
     x1, y1, x2, y2 = bbox
     if object_settings.get("show_boxes", True):
         cv2.rectangle(frame, (x1, y1), (x2, y2), colorPalette[cls], 2)
         cv2.rectangle(overlay, (x1, y1), (x2, y2), colorPalette[cls], 2)
     if object_settings.get("show_labels", True):
-        text = f'{label.capitalize()}   '
-        cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+        object_label = [None, f"{label}    {conf}"]
+        text = f'{object_label[1].capitalize()}'
         text_size = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
-        cv2.rectangle(overlay, (x1, y1 - 23 + text_size[1]), (x1 + text_size[0] - 45, y1 - 15 - text_size[1]), (42, 42, 42), -1)
-        cv2.putText(overlay, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+        text_width = text_size[0] - 1
+        #If the text is wider than the bounding box, split it into two lines: conf\nlabel
+        if text_width > abs(x2 - x1):
+            conf_text = f"{conf}"
+            label_text = f"{label.capitalize()}"
+            label_size = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+            conf_size = cv2.getTextSize(conf_text, cv2.FONT_HERSHEY_SIMPLEX, 0.9, 2)[0]
+            cv2.rectangle(overlay, (x1, y1 - 31), (x1 + label_size[0] - 1, y1 - 6), (42, 42, 42), -1)
+            cv2.rectangle(overlay, (x1, y1 - 39 - conf_size[1]), (x1 + conf_size[0] - 1, y1 - 26), (42, 42, 42), -1)
+            cv2.putText(frame, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+            cv2.putText(overlay, label_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+            cv2.putText(frame, conf_text, (x1, y1 - 10 - label_size[1] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+            cv2.putText(overlay, conf_text, (x1, y1 - 10 - label_size[1] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+        else:
+            cv2.putText(frame, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
+            cv2.rectangle(overlay, (x1, y1 - 23 + text_size[1]), (x1 + text_size[0] - 1, y1 - 15 - text_size[1]), (42, 42, 42), -1)
+            cv2.putText(overlay, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, colorPalette[cls], 2, lineType=cv2.LINE_AA)
         
 def create_ellipse_mask(height, width, box):
     #circumscribes an ellipse around the box
@@ -255,7 +270,7 @@ def get_detections(results, class_assignments, objects_settings):
                 cls_id = int(detection.cls.item())
                 class_label = next(key for key, value in class_assignments.items() if value == cls_id)
                 confidence_score = detection.conf.item()
-                if confidence_score > objects_settings[class_label].get("confidence_threshold", 0.65):
+                if confidence_score > objects_settings[class_label].get("confidence_threshold", 0.55):
                     x1, y1, x2, y2 = map(int, detection.xyxy[0].tolist())
                     bbox = [x1, y1, x2, y2]
                     if objects_settings[class_label].get("enable_tracking", False):
@@ -344,22 +359,20 @@ def blur_objects(needs_blur, blur_enabled_objects, tracking_enabled_objects, obj
 def draw_annotations_and_overlay(annotated_frame, bboxes, colorPalette, objects_settings, confidence_scores):
     annotated_frame_with_overlay = annotated_frame.copy()
     for label, bbox in bboxes.items():
+        #cls is label with the number removed from the end
         cls = ''.join([i for i in label if not i.isdigit()])
-        object_label = label if objects_settings[cls].get("show_labels", True) else ''
         if isinstance(bbox[0], list):
             for i in range(len(bbox)):
-                object_label = f"{label}    {confidence_scores[cls][i]:.2f}" if object_label else ''
-                draw_annotation(annotated_frame, annotated_frame_with_overlay, object_label, bbox[i], colorPalette, objects_settings[cls], cls)
+                draw_annotation(annotated_frame, annotated_frame_with_overlay, label, f"{confidence_scores[cls][i]:.2f}", bbox[i], colorPalette, objects_settings[cls], cls)
         else:
-            object_label = f"{label}    {confidence_scores[label]:.2f}" if object_label else ''
-            draw_annotation(annotated_frame, annotated_frame_with_overlay, object_label, bbox, colorPalette, objects_settings[cls], cls)
+            draw_annotation(annotated_frame, annotated_frame_with_overlay, label, f"{confidence_scores[label]:.2f}", bbox, colorPalette, objects_settings[cls], cls)
     alpha = 0.35
     result_image = cv2.addWeighted(annotated_frame_with_overlay, alpha, annotated_frame, 1 - alpha, 0)
     return result_image
 
 def get_total_objects(bboxes):
     total_objects = 0
-    for label, bbox in bboxes.items():
+    for _, bbox in bboxes.items():
         total_objects += len(bbox) if isinstance(bbox[0], list) else 1
     return total_objects
 
