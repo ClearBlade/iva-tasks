@@ -30,9 +30,17 @@ def on_message(message):
     task_settings = data.get('task_settings')
     frame_shape = data.get('frame_shape')
 
-    existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
-    frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
-    existing_mem.close()
+    try:
+        existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
+        frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
+        existing_mem.close()
+    except Exception as e:
+        print(f"Error accessing shared memory: {e}")
+        return
+
+    if frame is None:
+        print('No frame found in the message')
+        return
 
     print('frame read from shared mem')
     
