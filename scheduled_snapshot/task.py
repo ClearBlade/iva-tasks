@@ -42,7 +42,7 @@ def save(root_path: str, frame, camera_id: str, resolution: int, file_type: str)
     return file_path
 
 def save_frame(frame, camera_id, task_settings):
-    root_path = task_settings.get("save_path", "./assets/saved_frames")
+    root_path = task_settings.get("root_path", "./assets/saved_frames")
     file_type = task_settings.get("file_type", "JPG")
     resolution = task_settings.get("resolution", "Low")
     interval = task_settings.get("interval", 3600)
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     camera_id = "camera_1"
     frame = cv2.imread("assets/test.png")
     path = save_frame(frame, camera_id, {
-        "save_path": "assets/saved_frames",
+        "root_path": "assets/saved_frames",
         "file_type": "PNG",
         "resolution": 'High',
         "interval": "10", # in seconds
