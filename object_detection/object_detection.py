@@ -241,9 +241,16 @@ def pixelate(image, mask, mask_bbox, block_size=9):
     roi = image[y1:y2, x1:x2]
     roi_mask = mask[y1:y2, x1:x2]
     h, w = roi.shape[:2]
-    small = cv2.resize(roi, (w // block_size, h // block_size), interpolation=cv2.INTER_LINEAR)
+    target_w = max(1, w // block_size)
+    target_h = max(1, h // block_size)
+    #skip pixelation if region is too small
+    if w <= 1 or h <= 1:
+        return image
+    small = cv2.resize(roi, (target_w, target_h), interpolation=cv2.INTER_LINEAR)
     pixelated = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
-    result = np.where(roi_mask[:,:,np.newaxis] > 0, pixelated, roi)
+    if len(roi_mask.shape) == 2:
+        roi_mask = roi_mask[:,:,np.newaxis]
+    result = np.where(roi_mask > 0, pixelated, roi)
     image[y1:y2, x1:x2] = result
     return image
 
