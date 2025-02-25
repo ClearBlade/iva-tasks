@@ -233,7 +233,7 @@ def create_ellipse_mask(height, width, box):
     #next get the bounding box of the ellipse
     box_width = abs(x2 - x1)
     box_height = abs(y2 - y1)
-    mask_bbox = [max(center[0] - ellipse_width, 0), max(center[1] - ellipse_height, 0), center[0] + ellipse_width, center[1] + ellipse_height]
+    mask_bbox = [max(center[0] - ellipse_width, 0), max(center[1] - ellipse_height, 0), min(width, center[0] + ellipse_width), min(height, center[1] + ellipse_height)]
     return mask, mask_bbox
 
 def pixelate(image, mask, mask_bbox, block_size=9):
