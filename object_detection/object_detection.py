@@ -31,7 +31,7 @@ class IDTracker:
                 if yolo_id in self.tracking_info[cls]:
                     tracker_id = self.tracking_info[cls][yolo_id].tracker_id
                 else:
-                    tracker_id = self.handle_new_tracked_object(cls, bbox)
+                    tracker_id = self.handle_new_tracked_object(cls, bbox, yolo_id)
                 new_tracking_info[cls][yolo_id] = TrackingInfo(tracker_id, bbox, yolo_id)
             else:
                 untracked_detections.append((cls, yolo_id, bbox))
@@ -59,12 +59,14 @@ class IDTracker:
             for info in new_tracking_info[cls].values():
                 self.untracked_objects[cls][info.tracker_id] = info
 
-    def handle_new_tracked_object(self, cls, bbox):
+    def handle_new_tracked_object(self, cls, bbox, yolo_id):
         for tracker_id, info in self.untracked_objects[cls].items():
             distance = get_distance_between_objects(bbox, info.bbox)
             if distance <= self.distance_threshold:
                 return tracker_id
-        return self.get_next_available_id(cls)
+        tracker_id = self.get_next_available_id(cls)
+        self.tracking_info[cls][tracker_id] = TrackingInfo(tracker_id, bbox, yolo_id)
+        return tracker_id
 
     def get_next_available_id(self, cls):
         used_ids = set(info.tracker_id for info in self.tracking_info[cls].values())
@@ -385,22 +387,29 @@ def detect_objects(camera_id, task_settings, input_frame, frame_shape, roi=None)
     annotated_objects = [obj for obj in objects if objects_settings[obj].get("show_boxes", False) or objects_settings[obj].get("show_labels", False)]
     blur_enabled_objects = [obj for obj in objects if objects_settings[obj].get("enable_blur", False)]
     tracking_enabled_objects = [obj for obj in objects if objects_settings[obj].get("enable_tracking", False)]
+    
     class_assignments = get_class_assignments(objects)
+    
     enable_tracking = any(objects_settings[obj].get("enable_tracking", False) for obj in objects_settings)
     #needs_blur is true if both objects has any supported_blur_classes and if for any of the supported_blur_classes in objects_settings, enable_blur is True
     needs_blur = any(obj in blur_enabled_objects for obj in supported_blur_classes)
+    
     model, id_tracker = get_model_and_tracker(camera_id, class_assignments, enable_tracking)    
     if enable_tracking:
         results = model.track(input_frame, persist=True, verbose=False)
     else:
         results = model(input_frame, verbose=False)
+
     colorPalette = get_colors(camera_id, annotated_objects, input_frame, frame_shape)
+    
     detections, bboxes, objects_detected, confidence_scores = get_detections(results, class_assignments, objects_settings)
+    
     bboxes, confidence_scores = update_tracker(objects_settings, id_tracker, detections, bboxes, confidence_scores)
+    
     blurred_frame = blur_objects(needs_blur, blur_enabled_objects, tracking_enabled_objects, objects_detected, bboxes, camera_id, input_frame) #if blur_faces is False, this function will return the input_frame as is
     result_image = draw_annotations_and_overlay(blurred_frame, bboxes, colorPalette, objects_settings, confidence_scores)
-    total_objects = get_total_objects(bboxes)
-    return result_image, bboxes, list(objects_detected), total_objects
+
+    return result_image, bboxes, list(objects_detected), get_total_objects(bboxes)
 
 if __name__ == '__main__':
     #Test code here if needed
