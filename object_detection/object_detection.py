@@ -24,6 +24,8 @@ class IDTracker:
         current_yolo_ids = {cls: set() for cls in self.classifications}
         untracked_detections = []
         new_tracking_info = {cls: {} for cls in self.classifications}
+        assigned_tracker_ids = {cls: set() for cls in self.classifications}
+        
         #First, handle all tracked objects
         for cls, yolo_id, bbox, _ in detections:
             if yolo_id >= 0:
@@ -31,17 +33,22 @@ class IDTracker:
                 if yolo_id in self.tracking_info[cls]:
                     tracker_id = self.tracking_info[cls][yolo_id].tracker_id
                 else:
-                    tracker_id = self.handle_new_tracked_object(cls, bbox, yolo_id)
+                    tracker_id = self.handle_new_tracked_object(cls, bbox, yolo_id, assigned_tracker_ids)            
+                if tracker_id in assigned_tracker_ids[cls]:
+                    tracker_id = self.get_next_available_id(cls, assigned_tracker_ids[cls])            
+                assigned_tracker_ids[cls].add(tracker_id)
                 new_tracking_info[cls][yolo_id] = TrackingInfo(tracker_id, bbox, yolo_id)
             else:
                 untracked_detections.append((cls, yolo_id, bbox))
+    
         #Handle untracked objects
-        self.update_pretracking(untracked_detections, new_tracking_info)
+        self.update_pretracking(untracked_detections, new_tracking_info, assigned_tracker_ids)
+    
         #Update tracking_info
         self.tracking_info = new_tracking_info
         return self.tracking_info
 
-    def update_pretracking(self, untracked_detections, new_tracking_info):
+    def update_pretracking(self, untracked_detections, new_tracking_info, assigned_tracker_ids):
         for cls, yolo_id, bbox in untracked_detections:
             matched = False
             for tracker_id, info in list(self.untracked_objects[cls].items()):
@@ -51,7 +58,8 @@ class IDTracker:
                     matched = True
                     break
             if not matched:
-                tracker_id = self.get_next_available_id(cls)
+                tracker_id = self.get_next_available_id(cls, assigned_tracker_ids[cls])
+                assigned_tracker_ids[cls].add(tracker_id)
                 new_tracking_info[cls][yolo_id] = TrackingInfo(tracker_id, bbox, yolo_id)
         #Update untracked_objects with new untracked detections
         self.untracked_objects = {cls: {} for cls in self.classifications}
@@ -59,18 +67,23 @@ class IDTracker:
             for info in new_tracking_info[cls].values():
                 self.untracked_objects[cls][info.tracker_id] = info
 
-    def handle_new_tracked_object(self, cls, bbox, yolo_id):
+    def handle_new_tracked_object(self, cls, bbox, yolo_id, assigned_tracker_ids):
         for tracker_id, info in self.untracked_objects[cls].items():
             distance = get_distance_between_objects(bbox, info.bbox)
             if distance <= self.distance_threshold:
                 return tracker_id
-        tracker_id = self.get_next_available_id(cls)
+        tracker_id = self.get_next_available_id(cls, assigned_tracker_ids[cls])
         self.tracking_info[cls][tracker_id] = TrackingInfo(tracker_id, bbox, yolo_id)
         return tracker_id
 
-    def get_next_available_id(self, cls):
+    def get_next_available_id(self, cls, additional_used_ids=None):
         used_ids = set(info.tracker_id for info in self.tracking_info[cls].values())
         used_ids.update(info.tracker_id for info in self.untracked_objects[cls].values())
+    
+        #Add any additional used IDs from the current frame
+        if additional_used_ids:
+            used_ids.update(additional_used_ids)
+    
         tracker_id = 1
         while tracker_id in used_ids:
             tracker_id += 1
