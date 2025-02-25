@@ -6,6 +6,8 @@ import dateutil.parser as parser
 
 # Save path will be /tmp/clearblade_platform_buckets/<system_key>/<camera_id>/<date>/<time>.jpg
 
+last_saved_times = {}  # Global variable to track last saved second
+
 def get_quality_perc(resolution):
     if resolution == 'High':
         return 100
@@ -13,31 +15,32 @@ def get_quality_perc(resolution):
         return 75
     return 50
 
-def should_save(interval, start_time):
+def check_interval(camera_id, interval, start_time):
+    global last_saved_times
+
     interval = int(interval)    
     start_time = parser.parse(start_time)
     current_time = datetime.now(timezone.utc)
     
     if current_time >= start_time:
         time_difference = (current_time - start_time).total_seconds()
-        print(int(time_difference))
+        current_second = int(time_difference)
         
-        if int(time_difference) % interval == 0:
-            return True
+        if current_second % interval == 0 and current_second != last_saved_times.get(camera_id, -1):
+            last_saved_times[camera_id] = current_second
+            return True, current_time.strftime("%Y-%m-%d_%H:%M:%S")
     
-    return False
+    return False, ""
 
-def save(root_path: str, frame, camera_id: str, resolution: int, file_type: str):
+def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str, name: str):
 
     frame = cv2.resize(frame, (0, 0), fx=get_quality_perc(resolution)/100, fy=get_quality_perc(resolution)/100, interpolation=cv2.INTER_AREA)
 
     system_key = os.environ['CB_SYSTEM_KEY']
     save_path = os.path.join(root_path, system_key, camera_id)
     os.makedirs(save_path, exist_ok=True)
-    
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
-    
-    file_path = os.path.join(save_path, f"{timestamp}.{file_type.lower()}")
+        
+    file_path = os.path.join(save_path, f"{name}.{file_type.lower()}")
     cv2.imwrite(file_path, frame)
     return file_path
 
@@ -48,8 +51,9 @@ def save_frame(frame, camera_id, task_settings):
     interval = task_settings.get("interval", 3600)
     start_time = task_settings.get("start_time", datetime.now().isoformat())
 
-    if should_save(interval, start_time):
-        return save(root_path, frame, camera_id, resolution, file_type)
+    should_save, name = check_interval(camera_id, interval, start_time)
+    if should_save:
+        return save(root_path, frame, camera_id, resolution, file_type, name)
     
     return ""
 

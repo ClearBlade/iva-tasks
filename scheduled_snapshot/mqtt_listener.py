@@ -33,7 +33,6 @@ def on_message(message):
     try:
         existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
         frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
-        existing_mem.close()
     except Exception as e:
         print(f"Error accessing shared memory: {e}")
         return
@@ -45,6 +44,8 @@ def on_message(message):
     print('frame read from shared mem')
     
     path = save_frame(frame, camera_id, task_settings)    
+
+    existing_mem.close()
     
     data[f"{TASK_ID}_output"] = {
         "saved_path": path,
