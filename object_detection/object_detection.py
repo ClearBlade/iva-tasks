@@ -14,7 +14,7 @@ class TrackingInfo:
         self.yolo_id = yolo_id
         
 class IDTracker:
-    def __init__(self, classifications, distance_threshold=200):
+    def __init__(self, classifications, distance_threshold=500):
         self.classifications = classifications
         self.distance_threshold = distance_threshold
         self.tracking_info = {cls: {} for cls in classifications}
