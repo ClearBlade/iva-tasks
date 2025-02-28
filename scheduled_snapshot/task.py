@@ -25,19 +25,19 @@ def check_interval(camera_id, interval, start_time):
     if current_time >= start_time:
         time_difference = (current_time - start_time).total_seconds()
         current_second = int(time_difference)
-        
         if current_second % interval == 0 and current_second != last_saved_times.get(camera_id, -1):
             last_saved_times[camera_id] = current_second
-            return True, current_time.strftime("%Y-%m-%d_%H:%M:%S")
+            current_time = current_time.astimezone()
+            return current_time.strftime("%Y-%m-%d"), current_time.strftime("%H:%M:%S")
     
-    return False, ""
+    return "", ""
 
-def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str, name: str):
+def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str, sub_folder:str, name: str):
 
     frame = cv2.resize(frame, (0, 0), fx=get_quality_perc(resolution)/100, fy=get_quality_perc(resolution)/100, interpolation=cv2.INTER_AREA)
 
     system_key = os.environ['CB_SYSTEM_KEY']
-    save_path = os.path.join(root_path, system_key, camera_id)
+    save_path = os.path.join(root_path, system_key, camera_id, sub_folder)
     os.makedirs(save_path, exist_ok=True)
         
     file_path = os.path.join(save_path, f"{name}.{file_type.lower()}")
@@ -51,13 +51,17 @@ def save_frame(frame, camera_id, task_settings):
     interval = task_settings.get("interval", 3600)
     start_time = task_settings.get("start_time", datetime.now().isoformat())
 
-    should_save, name = check_interval(camera_id, interval, start_time)
-    if should_save:
-        return save(root_path, frame, camera_id, resolution, file_type, name)
+    sub_folder, name = check_interval(camera_id, interval, start_time)
+    if sub_folder and name:
+        return save(root_path, frame, camera_id, resolution, file_type, sub_folder, name)
     
     return ""
 
 if __name__ == '__main__':
+    import os
+
+    os.environ['CB_SYSTEM_KEY'] = "test_system_key"
+
     camera_id = "camera_1"
     frame = cv2.imread("assets/test.png")
     path = save_frame(frame, camera_id, {
