@@ -1,8 +1,6 @@
 import json
 import time
-import cv2
 import numpy as np
-import base64
 from multiprocessing import shared_memory as shm
 import numpy as np
 import signal
@@ -30,7 +28,8 @@ def on_message(message):
     task_uuid = data.get('uuid')
     objects = task_settings.get('objects_to_detect', [])
     objects_to_detect = [obj for obj, settings in objects.items() if settings.get('enable_tracking', False)]
-    line = task_settings.get('line')
+    x1, y1, x2, y2 = task_settings.get('line')
+    line = [[x1, y1], [x2, y2]]
     if len(objects_to_detect) == 0:
         print('Invalid task settings: No objects have tracking enabled')
         return
@@ -52,10 +51,13 @@ def on_message(message):
     if any(results.values()):
         for classification, crossing in results.items():
             if crossing and (direction is None or crossing == direction):
+                if isinstance(crossing, list):
+                    crossing = crossing[0]
                 data[f"{TASK_ID}_output"] = {
                     "direction": crossing,
                     "crossing": True,
                     "classification": classification,
+                    "message": task_settings.get(crossing, 'Crossing detected')
                 }
                 output_topic = data.get('publish_path', [f'task/{TASK_ID}/output/{camera_id}'])[0]
                 data['publish_path'].remove(f'task/{TASK_ID}/input')
