@@ -29,8 +29,8 @@ def on_message(message):
     camera_id = data.get('camera_id')
     task_settings = data.get('task_settings')
     frame_shape = data.get('frame_shape')
-    print('TIMESTAMP:', task_settings.get('timestamp'))
-
+    task_id = data.get('id', 'scheduled_video_capture')
+    
     try:
         existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
         frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
@@ -41,10 +41,8 @@ def on_message(message):
     if frame is None:
         print('No frame found in the message')
         return
-
-    print('frame read from shared mem')
     
-    path = save_frame(frame, camera_id, task_uuid, task_settings, TASK_ID)    
+    path = save_frame(frame, camera_id, task_uuid, task_settings, task_id)    
 
     existing_mem.close()
     
