@@ -28,23 +28,23 @@ def check_interval(camera_id, interval, start_time):
         if current_second % interval == 0 and current_second != last_saved_times.get(camera_id, -1):
             last_saved_times[camera_id] = current_second
             current_time = current_time.astimezone()
-            return current_time.strftime("%Y-%m-%d"), current_time.strftime("%H:%M:%S")
+            return current_time.strftime("%Y-%m-%d"), current_time.strftime("%Y-%m-%d_%H.%M.%S")
     
     return "", ""
 
-def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str, sub_folder:str, name: str):
+def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str, sub_folder:str, name: str, task_id: str):
 
     frame = cv2.resize(frame, (0, 0), fx=get_quality_perc(resolution)/100, fy=get_quality_perc(resolution)/100, interpolation=cv2.INTER_AREA)
 
     system_key = os.environ['CB_SYSTEM_KEY']
-    save_path = os.path.join(root_path, system_key, camera_id, sub_folder)
+    save_path = os.path.join(root_path, system_key, camera_id, task_id, sub_folder)
     os.makedirs(save_path, exist_ok=True)
         
     file_path = os.path.join(save_path, f"{name}.{file_type.lower()}")
     cv2.imwrite(file_path, frame)
     return file_path
 
-def save_frame(frame, camera_id, task_settings):
+def save_frame(frame, camera_id, task_settings, task_id):
     root_path = task_settings.get("root_path", "./assets/saved_frames")
     file_type = task_settings.get("file_type", "JPG")
     resolution = task_settings.get("resolution", "Low")
@@ -53,7 +53,7 @@ def save_frame(frame, camera_id, task_settings):
 
     sub_folder, name = check_interval(camera_id, interval, start_time)
     if sub_folder and name:
-        return save(root_path, frame, camera_id, resolution, file_type, sub_folder, name)
+        return save(root_path, frame, camera_id, resolution, file_type, sub_folder, name, task_id)
     
     return ""
 
@@ -70,6 +70,6 @@ if __name__ == '__main__':
         "resolution": 'High',
         "interval": "10", # in seconds
         "start_time": "2025-02-25T15:31:05.423Z",
-    })
+    }, "scheduled_snapshot")
     print('saved image at:', path)
     
