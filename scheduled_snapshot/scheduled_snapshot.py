@@ -15,6 +15,16 @@ def get_quality_perc(resolution):
         return 75
     return 50
 
+def get_time_in_seconds(interval, units):
+    if units == 'Seconds':
+        return interval
+    elif units == 'Hours':
+        return interval * 3600
+    elif units == 'Days':
+        return interval * 86400
+    
+    return interval * 60
+
 def check_interval(camera_id, interval, start_time):
     global last_saved_times
 
@@ -48,9 +58,11 @@ def save_frame(frame, camera_id, task_settings, task_id):
     root_path = task_settings.get("root_path", "./assets/saved_frames")
     file_type = task_settings.get("file_type", "JPG")
     resolution = task_settings.get("resolution", "Low")
-    interval = task_settings.get("interval", 3600)
+    interval = task_settings.get("interval", 1)
+    units = task_settings.get("units", "Minutes")
     start_time = task_settings.get("start_time", datetime.now().isoformat())
 
+    interval = get_time_in_seconds(interval, units)
     sub_folder, name = check_interval(camera_id, interval, start_time)
     if sub_folder and name:
         return save(root_path, frame, camera_id, resolution, file_type, sub_folder, name, task_id)
@@ -68,7 +80,8 @@ if __name__ == '__main__':
         "root_path": "assets/saved_frames",
         "file_type": "PNG",
         "resolution": 'High',
-        "interval": "10", # in seconds
+        "interval": "10",
+        "units": "Seconds",
         "start_time": "2025-02-25T15:31:05.423Z",
     }, "scheduled_snapshot")
     print('saved image at:', path)
