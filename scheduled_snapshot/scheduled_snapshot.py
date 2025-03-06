@@ -16,19 +16,18 @@ def get_quality_perc(resolution):
     return 50
 
 def get_time_in_seconds(interval, units):
+    interval = int(interval)
     if units == 'Seconds':
         return interval
     elif units == 'Hours':
         return interval * 3600
     elif units == 'Days':
         return interval * 86400
-    
     return interval * 60
 
 def check_interval(camera_id, interval, start_time):
     global last_saved_times
 
-    interval = int(interval)    
     start_time = parser.parse(start_time)
     current_time = datetime.now(timezone.utc)
     
@@ -62,8 +61,8 @@ def save_frame(frame, camera_id, task_settings, task_id):
     units = task_settings.get("units", "Minutes")
     start_time = task_settings.get("start_time", datetime.now().isoformat())
 
-    interval = get_time_in_seconds(interval, units)
-    sub_folder, name = check_interval(camera_id, interval, start_time)
+    interval_secs = get_time_in_seconds(interval, units)
+    sub_folder, name = check_interval(camera_id, interval_secs, start_time)
     if sub_folder and name:
         return save(root_path, frame, camera_id, resolution, file_type, sub_folder, name, task_id)
     
@@ -71,18 +70,24 @@ def save_frame(frame, camera_id, task_settings, task_id):
 
 if __name__ == '__main__':
     import os
+    import time
 
     os.environ['CB_SYSTEM_KEY'] = "test_system_key"
-
     camera_id = "camera_1"
     frame = cv2.imread("assets/test.png")
-    path = save_frame(frame, camera_id, {
-        "root_path": "assets/saved_frames",
-        "file_type": "PNG",
-        "resolution": 'High',
-        "interval": "10",
-        "units": "Seconds",
-        "start_time": "2025-02-25T15:31:05.423Z",
-    }, "scheduled_snapshot")
-    print('saved image at:', path)
+
+    while True:
+        path = save_frame(frame, camera_id, {
+            "root_path": "assets/saved_frames",
+            "file_type": "PNG",
+            "resolution": 'High',
+            "interval": "5",
+            "units": "Seconds",
+            "start_time": "2025-02-25T15:31:05.423Z",
+        }, "scheduled_snapshot")
+        
+        if path:
+            print('saved image at:', path)
+            break
     
+        time.sleep(1)

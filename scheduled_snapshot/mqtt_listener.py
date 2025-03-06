@@ -8,6 +8,7 @@ from multiprocessing import shared_memory as shm
 import numpy as np
 from clearblade_mqtt_library import AdapterLibrary
 from dotenv import load_dotenv
+
 from scheduled_snapshot import save_frame
 
 TASK_ID = 'scheduled_snapshot'
@@ -29,7 +30,6 @@ def on_message(message):
     camera_id = data.get('camera_id')
     task_settings = data.get('task_settings')
     frame_shape = data.get('frame_shape')
-    task_id = data.get('id', 'scheduled_snapshot')
 
     try:
         existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
@@ -44,7 +44,7 @@ def on_message(message):
 
     print('frame read from shared mem')
     
-    path = save_frame(frame, camera_id, task_settings, task_id)    
+    path = save_frame(frame, camera_id, task_settings, TASK_ID)    
 
     existing_mem.close()
     
