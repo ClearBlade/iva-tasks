@@ -163,9 +163,21 @@ def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
     file_type = task_settings.get("file_type", "MP4")
     resolution = task_settings.get("resolution", "Low")
     interval = int(task_settings.get("interval", 3600))
-    duration = int(task_settings.get("duration", interval))
+    interval_units = task_settings.get("interval_units", "Seconds")
+    if interval_units == "Minutes":
+        interval *= 60
+    elif interval_units == "Hours":
+        interval *= 3600
+    elif interval_units == "Days":
+        interval *= 86400
+    duration = int(task_settings.get("clip_length", interval))
+    duration_units = task_settings.get("clip_length_units", "Seconds")
+    if duration_units == "Minutes":
+        duration *= 60
+    elif duration_units == "Hours":
+        duration *= 3600
     start_time = task_settings.get("start_time", datetime.now(timezone.utc).isoformat())
-    timestamp = datetime.now(timezone.utc).isoformat() #task_settings.get("timestamp", datetime.now(timezone.utc).isoformat())
+    timestamp = datetime.now(timezone.utc).isoformat()
    
     #Get frame shape for initialization
     frame_shape = frame.shape
