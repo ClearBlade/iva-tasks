@@ -142,8 +142,6 @@ def choose_colors(image, box_coordinates):
         colors['text_color'] = (0, 0, 0) #Black text for light backgrounds
     return colors
 
-    
-
 class CameraTracker:
     def __init__(self, initial_frame, frame_shape, line):
         self.previous_frame = {}
@@ -219,3 +217,7 @@ class CameraTracker:
             image = cv2.putText(image, 'A', A, cv2.FONT_HERSHEY_SIMPLEX, 2, self.colors['text_color'], 5, lineType = cv2.LINE_AA)
             image = cv2.putText(image, 'B', B, cv2.FONT_HERSHEY_SIMPLEX, 2, self.colors['text_color'], 5, lineType = cv2.LINE_AA)
         return image
+    
+if __name__ == '__main__':
+    #Test code here if needed
+    pass

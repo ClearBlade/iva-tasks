@@ -1,7 +1,7 @@
-# Object Detection Task
+# Line Crossing Task
 
-- Task ID: `object_detection`
-- Input Topic: `task/object_detection/input`
+- Task ID: `line_crossing`
+- Input Topic: `task/line_crossing/input`
 - Input Payload: 
     ```json
     {
@@ -17,13 +17,17 @@
                     "confidence_threshold": 0.4,            // {float} Confidence Threshold of the model from 0-1
                 },
                 "car": {
-                    "enable_tracking": True,
+                    "enable_tracking": False,               // Only objects with tracking enabled will be processed by the line crossing task
                     "enable_blur": True,
                     "show_boxes": True,
                     "show_labels": True,
                     "confidence_threshold": 0.4,
                 },
             },
+            "line": [740, 0, 741, 220],                     // {integer array} Coordinates of line on frame [x1, y1, x2, y2]
+            "direction": None,                              // {string} Which direction should trigger a crossing event. Expects ["A_TO_B", "B_TO_A", None]. None will result in any crossing triggering a crossing event regardless of direction. Defaults to None.
+            "A_TO_B": "entered",                            // {string} What an A_TO_B crossing should be called
+            "B_TO_A": "exited",                             // {string} What an B_TO_A crossing should be called
             "needs_video": True,                            // {boolean} Will save video when object is detected. Will not save overlapping videos.
             "needs_snapshot": True,                         // {boolean} Will save snapshot of annotated frame whenever object is detected. Only works if needs_video is false.
             "recording_lead_time": 5,                       // {integer} Time in seconds video should start before object is detected.
@@ -34,43 +38,29 @@
             "file_type": "mp4",                             // {string} File type of video or image ["mp4", "avi", "jpg", "png"]
             "root_path": "/your/path/here",                 // {string} Path of where video or snapshot is to be stored
         }
-    } 
-    ```
-- Output Topic: 
-    The output topic will be dynamic based on the next task assigned in the publish path.
-    If object detection is the final or only task, it will be task/{TASK_ID}/output/{camera_id} where TASK_ID is 'object_detection'
-- Output Payload with tracking:
-    ```json
-    {
-        **input_payload,
-        "object_detection_output": {                         // key = object class & value = bounded boxes 
+        "object_detection_output": {                        // key = object class & value = bounded boxes 
             "bboxes": {
                 "person1": [553.8050537109375, 93.83261108398438, 608.624267578125, 199.79129028320312],
                 "person2": [327.7948913574219, 160.7405242919922, 351.0251159667969, 182.00564575195312],
-                "car1": [192.2393341064453, 160.13238525390625, 411.2384033203125, 184.743408203125]
+                "car": [[192.2393341064453, 160.13238525390625, 411.2384033203125, 184.743408203125]]
             },
             "objects_detected": ["person", "car"], // all classifications detected in frame
             "total_objects_detected": 3 // total number of detected objects in frame
-        }   
+        }
     }
     ```
-
-- Output Payload with no tracking:
+- Output Topic: 
+    The output topic will be dynamic based on the next task assigned in the publish path.
+    If object detection is the final or only task, it will be task/{TASK_ID}/output/{camera_id} where TASK_ID is 'line_crossing'
+- Output Payload:
     ```json
     {
         **input_payload,
-        "object_detection_output": {                         // key = object class & value = bounded boxes 
-            "bboxes": {
-                "person": [
-                    [553.8050537109375, 93.83261108398438, 608.624267578125, 199.79129028320312],
-                    [327.7948913574219, 160.7405242919922, 351.0251159667969, 182.00564575195312]
-                ],
-                "boat": [
-                    [192.2393341064453, 160.13238525390625, 411.2384033203125, 184.743408203125]
-                ]
-            },
-            "objects_detected": ["person", "boat"], // all classifications detected in frame
-            "total_objects_detected": 3, // total number of detected objects in frame
+        "line_crossing_output": {                         
+            "direction": "A_TO_B",                                      // direction of crossing if crossing occured                  
+            "crossing": True,                                           // whether crossing occurred
+            "classification": "person",                                 // if crossing occurred, what classification of object crossed
+            "message": f"{task_settings["A_TO_B"]}",                     // message for the notification if crossing occurred. Defaults to "Crossing detected" if no message set
             "saved_video_path": f"{root_path}/yyyy-mm-dd/yyyy-mm-dd_hh.mm.ss.mp4" // if a video was saved, the path of the video is provided
         }   
     }
