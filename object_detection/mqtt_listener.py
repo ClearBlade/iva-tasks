@@ -9,7 +9,6 @@ import signal
 import sys
 import cv2
 from object_detection import detect_objects
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from recording_utils import clear_recordings
 TASK_ID = 'object_detection'
 INPUT_TOPIC = f'task/{TASK_ID}/input'
@@ -45,14 +44,23 @@ def on_message(message):
         "total_objects_detected": total_objects
     }
     if data.get('task_id', TASK_ID) == TASK_ID: #to make sure the needs_video is meant for this task
-        from recording_utils import LastCaptureTime, time_units
+        from recording_utils import LastCaptureTime, time_units, supported_image_file_types, supported_video_file_types
         event = (len(objects_detected) > 0 and total_objects > 0)
         root_path = task_settings.get('root_path', './assets/saved_videos')
-        if task_settings.get('needs_video', False):
+        file_type = task_settings.get('file_type', '').lower()
+        needs_video = False
+        needs_snapshot = False
+        if file_type in supported_video_file_types:
+            needs_video = True
+        elif file_type in supported_image_file_types:
+            needs_snapshot = True
+        elif file_type != '':
+            print(f'Unsupported file type: {file_type}')
+        if needs_video:
             scheduled_video_uuid = task_uuid + '_annotated'
             #Import necessary utilities if not already imported
             from recording_utils import (
-                setup_event_recording, handle_event_recording, add_to_shared_memory, supported_video_file_types
+                setup_event_recording, handle_event_recording, add_to_shared_memory
             )
             add_to_shared_memory(scheduled_video_uuid, image_with_bboxes)
             clip_length = int(task_settings.get('clip_length', 15) * time_units.get(task_settings.get('clip_length_units', 'Seconds'), 1))
@@ -93,8 +101,7 @@ def on_message(message):
                 TASK_ID,
                 data[f"{TASK_ID}_output"]  #To update with the saved_video_path
             )
-        elif task_settings.get('needs_snapshot', False):
-            from recording_utils import supported_image_file_types
+        elif needs_snapshot:
             retrigger_delay = int(task_settings.get('retrigger_delay', 15) * time_units.get(task_settings.get('retrigger_delay_units', 'Seconds'), 1))
             if camera_id not in last_capture_time:
                 last_capture_time[camera_id] = LastCaptureTime()

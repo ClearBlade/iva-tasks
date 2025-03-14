@@ -29,8 +29,7 @@
             "direction": None,                              // {string} Which direction should trigger a crossing event. Expects ["A_TO_B", "B_TO_A", None]. None will result in any crossing triggering a crossing event regardless of direction. Defaults to None.
             "A_TO_B": "entered",                            // {string} What an A_TO_B crossing should be called
             "B_TO_A": "exited",                             // {string} What an B_TO_A crossing should be called
-            "needs_video": True,                            // {boolean} Will save video when line is crossed in the specified direction (or any direction if None). Will not save overlapping videos.
-            "needs_snapshot": True,                         // {boolean} Will save snapshot of annotated frame whenever line is crossed in specified direction. Only works if needs_video is false.
+            "file_type": "mp4",                             // {string} File type of video or image ["mp4", "avi", "jpg", "png"], used to determine if the task needs to save image or video
             "recording_lead_time": 5,                       // {integer} Time in seconds video should start before line is crossed.
             "clip_length": 15,                              // {integer} Desired duration of saved video
             "retrigger_delay": 3,                           // {integer} Minimum time between saved snapshots
@@ -38,6 +37,7 @@
             "retrigger_delay_units": "Minutes",             // {string} Units of retrigger_delay value
             "file_type": "mp4",                             // {string} File type of video or image ["mp4", "avi", "jpg", "png"]
             "root_path": "/your/path/here",                 // {string} Path of where video or snapshot is to be stored
+            "resolution": "Original"                        // {string} Desired resolution of the video ["Original", "Lower", "Lowest"]
         }
         "object_detection_output": {                        // key = object class & value = bounded boxes 
             "bboxes": {
@@ -62,7 +62,7 @@
             "crossing": True,                                           // whether crossing occurred
             "classification": "person",                                 // if crossing occurred, what classification of object crossed
             "message": f"{task_settings["A_TO_B"]}",                     // message for the notification if crossing occurred. Defaults to "Crossing detected" if no message set
-            "saved_video_path": f"{root_path}/yyyy-mm-dd/yyyy-mm-dd_hh.mm.ss.mp4" // if a video was saved, the path of the video is provided
+            "saved_video_path": f"{root_path}/{SYSTEM_KEY}/{camera_id}/object_detection/yyyy-mm-dd/yyyy-mm-dd_hh.mm.ss.mp4" // if a video was saved, the path of the video is provided
         }   
     }
     ```

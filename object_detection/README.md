@@ -25,15 +25,14 @@
                     "confidence_threshold": 0.4,
                 },
             },
-            "needs_video": True,                            // {boolean} Will save video when object is detected. Will not save overlapping videos.
-            "needs_snapshot": True,                         // {boolean} Will save snapshot of annotated frame whenever object is detected. Only works if needs_video is false.
+            "file_type": "mp4",                             // {string} File type of video or image ["mp4", "avi", "jpg", "png"], used to determine if the task needs to save image or video
             "recording_lead_time": 5,                       // {integer} Time in seconds video should start before object is detected.
             "clip_length": 15,                              // {integer} Desired duration of saved video
             "retrigger_delay": 3,                           // {integer} Minimum time between saved snapshots
             "clip_length_units": "Seconds",                 // {string} Units of clip_length value. Accepts ["Seconds", "Minutes", "Hours", "Days"]. Defaults to "Seconds"
             "retrigger_delay_units": "Minutes",             // {string} Units of retrigger_delay value
-            "file_type": "mp4",                             // {string} File type of video or image ["mp4", "avi", "jpg", "png"]
             "root_path": "/your/path/here",                 // {string} Path of where video or snapshot is to be stored
+            "resolution": "Original"                        // {string} Desired resolution of the video ["Original", "Lower", "Lowest"]
         }
     } 
     ```
@@ -72,7 +71,7 @@
             },
             "objects_detected": ["person", "boat"], // all classifications detected in frame
             "total_objects_detected": 3, // total number of detected objects in frame
-            "saved_video_path": f"{root_path}/yyyy-mm-dd/yyyy-mm-dd_hh.mm.ss.mp4" // if a video was saved, the path of the video is provided
+            "saved_video_path": f"{root_path}/{SYSTEM_KEY}/{camera_id}/object_detection/yyyy-mm-dd/yyyy-mm-dd_hh.mm.ss.mp4" // if a video was saved, the path of the video is provided
         }   
     }
     ```
