@@ -28,8 +28,8 @@
             "direction": None,                              // {string} Which direction should trigger a crossing event. Expects ["A_TO_B", "B_TO_A", None]. None will result in any crossing triggering a crossing event regardless of direction. Defaults to None.
             "A_TO_B": "entered",                            // {string} What an A_TO_B crossing should be called
             "B_TO_A": "exited",                             // {string} What an B_TO_A crossing should be called
-            "needs_video": True,                            // {boolean} Will save video when object is detected. Will not save overlapping videos.
-            "needs_snapshot": True,                         // {boolean} Will save snapshot of annotated frame whenever object is detected. Only works if needs_video is false.
+            "needs_video": True,                            // {boolean} Will save video when line is crossed in the specified direction (or any direction if None). Will not save overlapping videos.
+            "needs_snapshot": True,                         // {boolean} Will save snapshot of annotated frame whenever line is crossed in specified direction. Only works if needs_video is false.
             "recording_lead_time": 5,                       // {integer} Time in seconds video should start before object is detected.
             "clip_length": 15,                              // {integer} Desired duration of saved video
             "retrigger_delay": 3,                           // {integer} Minimum time between saved snapshots
