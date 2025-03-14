@@ -11,13 +11,13 @@ from dotenv import load_dotenv
 from scheduled_video_capture import save_frame
 
 TASK_ID = 'scheduled_video_capture'
-existing_mem = None  # Global variable for shared memory
+existing_mem = None  #Global variable for shared memory
 
 def handle_sigterm(signum, frame):
     global existing_mem
     print("\n[Reader] SIGTERM received. Cleaning up shared memory...")
     if existing_mem:
-        existing_mem.close()  # Close but DO NOT unlink
+        existing_mem.close()  #Close but DO NOT unlink
     sys.exit(0)
 
 def on_message(message):
@@ -57,7 +57,7 @@ def on_message(message):
             existing_mem.close()
         return
     
-    # Close shared memory before processing to avoid locking it
+    #Close shared memory before processing to avoid locking it
     if existing_mem:
         existing_mem.close()
     

@@ -120,7 +120,7 @@ class VideoCaptureSessions:
                 del self.sessions[camera_id][task_uuid]
                 return ""
             
-            # Verify frames are valid before proceeding
+            #Verify frames are valid before proceeding
             valid_frames = []
             invalid_count = 0
             for i, frame in enumerate(frames):
@@ -139,15 +139,6 @@ class VideoCaptureSessions:
                 return ""
                 
             frames = valid_frames
-            
-            # Check for duplicate frames (potential frozen video)
-            duplicate_count = 0
-            for i in range(1, len(frames)):
-                if np.array_equal(frames[i], frames[i-1]):
-                    duplicate_count += 1
-                    
-            if duplicate_count > len(frames) * 0.8:  # More than 80% are duplicates
-                print(f"WARNING: High duplicate frame ratio ({duplicate_count}/{len(frames)}) - possible frozen video")
             
             #Get video properties
             height, width = frames[0].shape[:2]
@@ -171,14 +162,14 @@ class VideoCaptureSessions:
             #Choose codec based on file type
             if file_type.lower() == 'mp4':
                 try:
-                    fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264 codec
+                    fourcc = cv2.VideoWriter_fourcc(*'avc1')  #H.264 codec
                 except:
                     try:
                         print("WARNING: avc1 codec not available, falling back to H264")
                         fourcc = cv2.VideoWriter_fourcc(*'H264')
                     except:
                         print("WARNING: H264 codec not available, falling back to MP4V")
-                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Fallback
+                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  #Fallback
             else:  #AVI
                 fourcc = cv2.VideoWriter_fourcc(*'XVID')
         
