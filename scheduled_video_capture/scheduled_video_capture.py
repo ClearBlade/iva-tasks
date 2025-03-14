@@ -155,9 +155,9 @@ class VideoCaptureSessions:
         return ""
 
 def get_quality_perc(resolution):
-    if resolution == 'High':
+    if resolution == 'Original':
         return 100
-    elif resolution == 'Medium':
+    elif resolution == 'Lower':
         return 75
     return 50
 
@@ -167,7 +167,7 @@ capture_sessions = VideoCaptureSessions()
 def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
     root_path = task_settings.get("root_path", "./assets/saved_videos")
     file_type = task_settings.get("file_type", "MP4")
-    resolution = task_settings.get("resolution", "Low")
+    resolution = task_settings.get("resolution", "Lowest")
     interval = int(task_settings.get("interval", 3600))
     interval_units = task_settings.get("interval_units", "Seconds")
     if interval_units != "Seconds":
