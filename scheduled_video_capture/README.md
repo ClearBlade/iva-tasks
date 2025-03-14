@@ -8,9 +8,9 @@
         "uuid": "daf6af50-7e90-4ab6-80cc-501e9e3afb01",     // (string) Task UUID 
         "camera_id": "Hikvision101",                        // (string) Camera ID
         "task_settings": {  
-            "root_path": "/tmp/clearblade_platform_buckets/",   // (string) root path to store image
+            "root_path": "/tmp/clearblade_platform_buckets/",   // (string) root path to store video
             "file_type": "mp4",                                 // (string) File type ["mp4", "avi"]
-            "resolution": "Original",                           // (string) Image Quality - Original, Lower, Lowest
+            "resolution": "Original",                           // (string) Video Quality - Original, Lower, Lowest
             "interval": 600,                                    // (number) Interval between video start times
             "interval_units": "Seconds",                        // (string) Units of interval ["Seconds", "Minutes", "Hours", "Days"] Defaults to "Seconds"
             "start_time": "2025-02-25T15:31:05.423Z",           // (string) Desired interval start time
