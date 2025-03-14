@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timezone
 import cv2
 import dateutil.parser as parser
+import numpy as np
 
 time_units = {
     "Minutes": 60,
@@ -44,7 +45,6 @@ class VideoCaptureSessions:
         """Start a new video capture session"""
         if camera_id not in self.sessions:
             self.sessions[camera_id] = {}
-            
         self.sessions[camera_id][task_uuid] = {
             'first_timestamp': timestamp,
             'last_timestamp': timestamp,
@@ -58,17 +58,26 @@ class VideoCaptureSessions:
         if camera_id in self.sessions and task_uuid in self.sessions[camera_id]:
             session = self.sessions[camera_id][task_uuid]
             
+            if frame is None:
+                print(f"ERROR: Null frame received for camera {camera_id}, task {task_uuid} at {timestamp}")
+                return
+                
+            if len(frame.shape) < 2 or frame.size == 0:
+                print(f"ERROR: Invalid frame shape {frame.shape} for camera {camera_id}, task {task_uuid} at {timestamp}")
+                return
+            
             #Calculate duration of previous frame if there is one
             if session['frames']:
                 last_timestamp_dt = parser.parse(session['last_timestamp'])
                 current_timestamp_dt = parser.parse(timestamp)
                 duration = (current_timestamp_dt - last_timestamp_dt).total_seconds()
                 session['frame_durations'].append(max(duration, 0.033))  #At least 1/30 second
-            
-            #Add the new frame
-            session['frames'].append(frame.copy())
+                        
+            #Add the new frame - create a deep copy to ensure we don't have reference issues
+            frame_copy = frame.copy()
+            session['frames'].append(frame_copy)
             session['last_timestamp'] = timestamp
-    
+
     def should_end_session(self, camera_id, task_uuid, timestamp, duration):
         """Check if a session should end based on duration"""
         if camera_id in self.sessions and task_uuid in self.sessions[camera_id]:
@@ -78,7 +87,6 @@ class VideoCaptureSessions:
             
             #Check if duration exceeded
             elapsed = (timestamp_dt - first_timestamp_dt).total_seconds()
-            
             return elapsed >= duration
         
         return False
@@ -106,10 +114,40 @@ class VideoCaptureSessions:
         
             #Get frame info
             frames = session['frames']
+                        
             if not frames:
-                #No frames to save
+                print(f"ERROR: No frames to save for session {task_uuid}")
                 del self.sessions[camera_id][task_uuid]
                 return ""
+            
+            # Verify frames are valid before proceeding
+            valid_frames = []
+            invalid_count = 0
+            for i, frame in enumerate(frames):
+                if frame is not None and frame.size > 0 and len(frame.shape) >= 2:
+                    valid_frames.append(frame)
+                else:
+                    invalid_count += 1
+                    print(f"ERROR: Frame {i} is invalid in session {task_uuid}")
+                    
+            if invalid_count > 0:
+                print(f"Found {invalid_count} invalid frames out of {len(frames)} total")
+                
+            if not valid_frames:
+                print(f"ERROR: No valid frames to save for session {task_uuid}")
+                del self.sessions[camera_id][task_uuid]
+                return ""
+                
+            frames = valid_frames
+            
+            # Check for duplicate frames (potential frozen video)
+            duplicate_count = 0
+            for i in range(1, len(frames)):
+                if np.array_equal(frames[i], frames[i-1]):
+                    duplicate_count += 1
+                    
+            if duplicate_count > len(frames) * 0.8:  # More than 80% are duplicates
+                print(f"WARNING: High duplicate frame ratio ({duplicate_count}/{len(frames)}) - possible frozen video")
             
             #Get video properties
             height, width = frames[0].shape[:2]
@@ -128,20 +166,36 @@ class VideoCaptureSessions:
             fps = len(frames) / duration
             
             #Ensure FPS between 1 and 60
-            fps = max(min(fps, 60.0), 1.0) 
+            fps = max(min(fps, 60.0), 1.0)
         
             #Choose codec based on file type
             if file_type.lower() == 'mp4':
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                try:
+                    fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264 codec
+                except:
+                    try:
+                        print("WARNING: avc1 codec not available, falling back to H264")
+                        fourcc = cv2.VideoWriter_fourcc(*'H264')
+                    except:
+                        print("WARNING: H264 codec not available, falling back to MP4V")
+                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Fallback
             else:  #AVI
                 fourcc = cv2.VideoWriter_fourcc(*'XVID')
         
             #Create VideoWriter
             writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
+            
+            if not writer.isOpened():
+                print(f"ERROR: Failed to open VideoWriter for {file_path}")
+                del self.sessions[camera_id][task_uuid]
+                return ""
         
             #Write all frames
-            for frame in frames:
-                writer.write(frame)
+            for i, frame in enumerate(frames):
+                try:
+                    writer.write(frame)
+                except Exception as e:
+                    print(f"ERROR: Failed to write frame {i}: {str(e)}")
         
             #Release resources
             writer.release()
@@ -151,7 +205,7 @@ class VideoCaptureSessions:
             del self.sessions[camera_id][task_uuid]
         
             return result_path
-    
+
         return ""
 
 def get_quality_perc(resolution):
@@ -164,7 +218,19 @@ def get_quality_perc(resolution):
 #Create a global session manager
 capture_sessions = VideoCaptureSessions()
 
-def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
+def save_frame(frame, camera_id, task_uuid, task_settings, task_id):    
+    #Make a deep copy of the frame to avoid reference issues
+    if frame is not None:
+        try:
+            frame = frame.copy()            
+        except Exception as e:
+            print(f"ERROR: Failed to copy frame: {str(e)}")
+            frame = None
+    
+    if frame is None or frame.size == 0 or len(frame.shape) < 2:
+        print(f"ERROR: Invalid frame received for {camera_id}, task {task_uuid}")
+        return ""
+        
     root_path = task_settings.get("root_path", "./assets/saved_videos")
     file_type = task_settings.get("file_type", "MP4")
     resolution = task_settings.get("resolution", "Lowest")
@@ -191,19 +257,20 @@ def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
         capture_sessions.idling[camera_id][task_uuid] = { 'last_interval_position': 0 }
     
     should_start = capture_sessions.should_start_capture(camera_id, task_uuid, timestamp, start_time, interval)
+
     #Check if we have an active session and it should end
-    if (camera_id in capture_sessions.sessions and
-        task_uuid in capture_sessions.sessions[camera_id] and
-        capture_sessions.should_end_session(camera_id, task_uuid, timestamp, duration)) or should_start:
-       
-        #End the session and save video
-        saved_file_path = capture_sessions.end_session(camera_id, task_uuid, root_path, resolution, file_type, task_id, duration)
+    active_session = camera_id in capture_sessions.sessions and task_uuid in capture_sessions.sessions[camera_id]
+    should_end = active_session and capture_sessions.should_end_session(camera_id, task_uuid, timestamp, duration)
+    
+    if should_end or should_start:
+        if active_session:
+            #End the session and save video
+            saved_file_path = capture_sessions.end_session(camera_id, task_uuid, root_path, resolution, file_type, task_id, duration)
    
     #Then check if we should start a new session (regardless of whether we just ended one)
     if (camera_id not in capture_sessions.sessions or
         task_uuid not in capture_sessions.sessions[camera_id]) and \
        should_start:
-       
         #Start a new session
         capture_sessions.start_session(camera_id, task_uuid, timestamp, frame_shape)
    

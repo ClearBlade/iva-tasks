@@ -23,34 +23,51 @@ def handle_sigterm(signum, frame):
 def on_message(message):
     start_time = time.time()
     data = json.loads(message.payload.decode())
-    print('received message')
 
     task_uuid = data.get('uuid')
     camera_id = data.get('camera_id')
     task_settings = data.get('task_settings')
     frame_shape = data.get('frame_shape')
-    task_id = data.get('id', 'scheduled_video_capture')
-    
+    frame = None
+    existing_mem = None
     try:
-        existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
+        existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")        
+        #Create a copy of the frame from shared memory
         frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
+        
+        #Check frame validity
+        if frame is None:
+            print(f'ERROR: Frame from shared memory is None')
+        elif frame.size == 0:
+            print(f'ERROR: Frame from shared memory has size 0')
+        elif len(frame.shape) < 2:
+            print(f'ERROR: Frame from shared memory has invalid shape: {frame.shape}')
+        else:
+            frame = frame.copy()
+            
     except Exception as e:
-        print(f"Error accessing shared memory: {e}")
+        print(f"ERROR: Error accessing shared memory: {e}")
+        if existing_mem:
+            existing_mem.close()
         return
 
-    if frame is None:
-        print('No frame found in the message')
+    if frame is None or frame.size == 0:
+        print(f'ERROR: No valid frame found in the message')
+        if existing_mem:
+            existing_mem.close()
         return
     
-    path = save_frame(frame, camera_id, task_uuid, task_settings, task_id)    
-
-    existing_mem.close()
+    # Close shared memory before processing to avoid locking it
+    if existing_mem:
+        existing_mem.close()
+    
+    path = save_frame(frame, camera_id, task_uuid, task_settings, TASK_ID)    
     
     if path:
+        print(f'VIDEO SAVED TO: {path}')
         data[f"{TASK_ID}_output"] = {
             "saved_path": path,
         }
-        print('VIDOE SAVED TO: ', path)
     else:
         data[f"{TASK_ID}_output"] = {
             "saved_path": None,
@@ -62,14 +79,10 @@ def on_message(message):
 
     if len(publish_path) > 0:
         adapter.publish(publish_path[0], json.dumps(data))
-        print(f'published message to publish_path topic: {publish_path[0]}')
     else:
         output_topic = f'task/{TASK_ID}/output/{camera_id}'
         adapter.publish(output_topic, json.dumps(data))
-        print(f'published message to output topic: {output_topic}')
     
-    print('published message')
-
     end_time = time.time()
     processing_time = end_time - start_time
     print(f'Total processing time: {processing_time:.6f} seconds')
