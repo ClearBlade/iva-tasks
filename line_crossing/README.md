@@ -5,7 +5,8 @@
 - Input Payload: 
     ```json
     {
-        "uuid": "daf6af50-7e90-4ab6-80cc-501e9e3afb01",     // (string) Task UUID 
+        "uuid": "daf6af50-7e90-4ab6-80cc-501e9e3afb01",     // (string) Task UUID
+        "task_id": "line_crossing",                         // (string) Task ID
         "camera_id": "Hikvision101",                        // (string) Camera ID
         "task_settings": {  
             "objects_to_detect": {
