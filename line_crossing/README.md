@@ -30,7 +30,7 @@
             "B_TO_A": "exited",                             // {string} What an B_TO_A crossing should be called
             "needs_video": True,                            // {boolean} Will save video when line is crossed in the specified direction (or any direction if None). Will not save overlapping videos.
             "needs_snapshot": True,                         // {boolean} Will save snapshot of annotated frame whenever line is crossed in specified direction. Only works if needs_video is false.
-            "recording_lead_time": 5,                       // {integer} Time in seconds video should start before object is detected.
+            "recording_lead_time": 5,                       // {integer} Time in seconds video should start before line is crossed.
             "clip_length": 15,                              // {integer} Desired duration of saved video
             "retrigger_delay": 3,                           // {integer} Minimum time between saved snapshots
             "clip_length_units": "Seconds",                 // {string} Units of clip_length value. Accepts ["Seconds", "Minutes", "Hours", "Days"]. Defaults to "Seconds"
@@ -51,7 +51,7 @@
     ```
 - Output Topic: 
     The output topic will be dynamic based on the next task assigned in the publish path.
-    If object detection is the final or only task, it will be task/{TASK_ID}/output/{camera_id} where TASK_ID is 'line_crossing'
+    If line_crossing is the final task, it will be task/{TASK_ID}/output/{camera_id} where TASK_ID is 'line_crossing'
 - Output Payload:
     ```json
     {
