@@ -312,8 +312,8 @@ def setup_event_recording(camera_id, task_uuid, recording_lead_time, clip_length
     #Clean up old cache files to save space (keep the most recent ones)
     clean_cache(cache_base_path)
    
-    #Scheduled recording interval is bound between 5 and 300 seconds unless clip_length is less than 5 seconds
-    interval = min(max(recording_lead_time, 5), clip_length)
+    #Scheduled recording interval
+    interval = max(recording_lead_time, min(clip_length, 5))
     if recording_lead_time == 0:
         interval = min(max(clip_length//2, 5), 300)
         
