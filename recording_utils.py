@@ -449,7 +449,8 @@ def handle_event_recording(
                 return 0
             else:
                 print("Failed to generate video")
-                return last_event_time
+                #Reset last_event_time
+                return 0
        
         return last_event_time
    
