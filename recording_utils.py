@@ -10,8 +10,8 @@ import glob
 
 #Constants
 DATETIME_FORMAT = '%Y-%m-%d_%H.%M.%S'
-TEMP_DIR = '/Users/Drew5/Desktop/DEV/IVATesting4/recordings' #'./recordings'
-RECORDINGS_CACHE_DIR = '/Users/Drew5/Desktop/DEV/IVATesting4/recordings_cache' #'./recordings_cache'
+TEMP_DIR = './recordings'
+RECORDINGS_CACHE_DIR = './recordings_cache'
 SYSTEM_KEY = os.environ.get('CB_SYSTEM_KEY', 'default_system')
 
 #class for storing timestamp of last video capture start and/or last snapshot to be used so no other video capture or snapshot is started before retrigger delay
