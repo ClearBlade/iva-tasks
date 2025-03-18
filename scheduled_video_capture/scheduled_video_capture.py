@@ -160,7 +160,10 @@ class VideoCaptureSessions:
             fps = max(min(fps, 60.0), 1.0)
         
             #Choose codec based on file type
-            if file_type.lower() == 'mp4':
+            if file_type.lower() == 'avi':
+                fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            else:
+                #MP4 codec
                 try:
                     fourcc = cv2.VideoWriter_fourcc(*'avc1')  #H.264 codec
                 except:
@@ -170,8 +173,6 @@ class VideoCaptureSessions:
                     except:
                         print("WARNING: H264 codec not available, falling back to MP4V")
                         fourcc = cv2.VideoWriter_fourcc(*'mp4v')  #Fallback
-            else:  #AVI
-                fourcc = cv2.VideoWriter_fourcc(*'XVID')
         
             #Create VideoWriter
             writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
@@ -223,7 +224,7 @@ def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
         return ""
         
     root_path = task_settings.get("root_path", "./assets/saved_videos")
-    file_type = task_settings.get("file_type", "MP4")
+    file_type = task_settings.get("file_type", "mp4")
     resolution = task_settings.get("resolution", "Lowest")
     interval = int(task_settings.get("interval", 3600))
     interval_units = task_settings.get("interval_units", "Seconds")
