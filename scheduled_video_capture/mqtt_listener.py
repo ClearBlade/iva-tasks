@@ -21,9 +21,7 @@ def handle_sigterm(signum, frame):
     sys.exit(0)
 
 def on_message(message):
-    start_time = time.time()
     data = json.loads(message.payload.decode())
-
     task_uuid = data.get('uuid')
     camera_id = data.get('camera_id')
     task_settings = data.get('task_settings')
@@ -32,36 +30,37 @@ def on_message(message):
     existing_mem = None
     try:
         existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")        
-        #Create a copy of the frame from shared memory
+        #Get the frame from shared memory
         frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
         
         #Check frame validity
+        invalid_frame = False
         if frame is None:
             print(f'ERROR: Frame from shared memory is None')
+            invalid_frame = True
         elif frame.size == 0:
             print(f'ERROR: Frame from shared memory has size 0')
+            invalid_frame = True
         elif len(frame.shape) < 2:
             print(f'ERROR: Frame from shared memory has invalid shape: {frame.shape}')
-        else:
-            frame = frame.copy()
+            invalid_frame = True
+        
+        if invalid_frame:
+            if existing_mem:
+                existing_mem.close()
+            return
             
     except Exception as e:
         print(f"ERROR: Error accessing shared memory: {e}")
         if existing_mem:
             existing_mem.close()
         return
-
-    if frame is None or frame.size == 0:
-        print(f'ERROR: No valid frame found in the message')
-        if existing_mem:
-            existing_mem.close()
-        return
+    
+    path = save_frame(frame, camera_id, task_uuid, task_settings, TASK_ID)    
     
     #Close shared memory before processing to avoid locking it
     if existing_mem:
         existing_mem.close()
-    
-    path = save_frame(frame, camera_id, task_uuid, task_settings, TASK_ID)    
     
     if path:
         print(f'VIDEO SAVED TO: {path}')
@@ -83,10 +82,6 @@ def on_message(message):
         output_topic = f'task/{TASK_ID}/output/{camera_id}'
         adapter.publish(output_topic, json.dumps(data))
     
-    end_time = time.time()
-    processing_time = end_time - start_time
-    print(f'Total processing time: {processing_time:.6f} seconds')
-
 signal.signal(signal.SIGTERM, handle_sigterm)
 
 if __name__ == '__main__':   

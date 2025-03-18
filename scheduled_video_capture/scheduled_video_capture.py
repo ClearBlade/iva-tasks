@@ -2,9 +2,8 @@ import os
 from datetime import datetime, timezone
 import cv2
 import dateutil.parser as parser
-import numpy as np
 
-time_units = {
+TIME_UNITS = {
     "Minutes": 60,
     "Hours": 3600,
     "Days": 86400
@@ -13,7 +12,7 @@ time_units = {
 #Class to manage video capture sessions for multiple cameras
 class VideoCaptureSessions:
     def __init__(self):
-        self.sessions = {}  #Format: {camera_id: {task_uuid: {first_timestamp, last_timestamp, writer, frames}}}
+        self.sessions = {}  #Format: {camera_id: {task_uuid: {first_timestamp, last_timestamp, frames}}}
         self.idling = {}  #Format: {camera_id: {task_uuid: {last_interval_position}}}
     
     def should_start_capture(self, camera_id, task_uuid, timestamp, start_time, interval):
@@ -49,7 +48,6 @@ class VideoCaptureSessions:
             'first_timestamp': timestamp,
             'last_timestamp': timestamp,
             'frames': [],
-            'frame_durations': [],  #Store duration for each frame
             'frame_shape': frame_shape
         }
         
@@ -71,11 +69,9 @@ class VideoCaptureSessions:
                 last_timestamp_dt = parser.parse(session['last_timestamp'])
                 current_timestamp_dt = parser.parse(timestamp)
                 duration = (current_timestamp_dt - last_timestamp_dt).total_seconds()
-                session['frame_durations'].append(max(duration, 0.033))  #At least 1/30 second
                         
-            #Add the new frame - create a deep copy to ensure we don't have reference issues
-            frame_copy = frame.copy()
-            session['frames'].append(frame_copy)
+            #Add the new frame
+            session['frames'].append(frame)
             session['last_timestamp'] = timestamp
 
     def should_end_session(self, camera_id, task_uuid, timestamp, duration):
@@ -199,7 +195,7 @@ class VideoCaptureSessions:
             return result_path
 
         return ""
-
+    
 def get_quality_perc(resolution):
     if resolution == 'Original':
         return 100
@@ -211,29 +207,17 @@ def get_quality_perc(resolution):
 capture_sessions = VideoCaptureSessions()
 
 def save_frame(frame, camera_id, task_uuid, task_settings, task_id):    
-    #Make a deep copy of the frame to avoid reference issues
-    if frame is not None:
-        try:
-            frame = frame.copy()            
-        except Exception as e:
-            print(f"ERROR: Failed to copy frame: {str(e)}")
-            frame = None
-    
-    if frame is None or frame.size == 0 or len(frame.shape) < 2:
-        print(f"ERROR: Invalid frame received for {camera_id}, task {task_uuid}")
-        return ""
-        
     root_path = task_settings.get("root_path", "./assets/saved_videos")
     file_type = task_settings.get("file_type", "mp4")
     resolution = task_settings.get("resolution", "Lowest")
     interval = int(task_settings.get("interval", 3600))
     interval_units = task_settings.get("interval_units", "Seconds")
     if interval_units != "Seconds":
-        interval *= time_units.get(interval_units, 1)
+        interval *= TIME_UNITS.get(interval_units, 1)
     duration = int(task_settings.get("clip_length", interval))
     duration_units = task_settings.get("clip_length_units", "Seconds")
     if duration_units != "Seconds":
-        duration *= time_units.get(duration_units, 1)
+        duration *= TIME_UNITS.get(duration_units, 1)
     start_time = task_settings.get("start_time", datetime.now(timezone.utc).isoformat())
     timestamp = datetime.now(timezone.utc).isoformat()
    
@@ -254,24 +238,107 @@ def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
     active_session = camera_id in capture_sessions.sessions and task_uuid in capture_sessions.sessions[camera_id]
     should_end = active_session and capture_sessions.should_end_session(camera_id, task_uuid, timestamp, duration)
     
-    if should_end or should_start:
-        if active_session:
-            #End the session and save video
+    if active_session:
+        if should_end:
             saved_file_path = capture_sessions.end_session(camera_id, task_uuid, root_path, resolution, file_type, task_id, duration)
-   
-    #Then check if we should start a new session (regardless of whether we just ended one)
-    if (camera_id not in capture_sessions.sessions or
-        task_uuid not in capture_sessions.sessions[camera_id]) and \
-       should_start:
-        #Start a new session
+        else:
+            capture_sessions.add_frame(camera_id, task_uuid, frame, timestamp)
+    elif should_start:
         capture_sessions.start_session(camera_id, task_uuid, timestamp, frame_shape)
-   
-    #If we have an active session now, add the frame
-    if camera_id in capture_sessions.sessions and task_uuid in capture_sessions.sessions[camera_id]:
-        capture_sessions.add_frame(camera_id, task_uuid, frame, timestamp)
-   
+    
     return saved_file_path
 
 if __name__ == '__main__':
-    #Test code here if needed
-    pass
+    import os
+    import time
+    import cv2
+    
+    #Set environment variable for testing
+    os.environ['CB_SYSTEM_KEY'] = "test_system_key"
+    
+    #Path to test video - replace with your actual path
+    video_path = '/Users/Drew5/Desktop/DEV/IVATesting4/timerVideo.mp4'
+    
+    #Initialize camera and task IDs
+    camera_id = "camera_1"
+    task_uuid = "test_task_123"
+    
+    #Create test settings
+    start_time = datetime.now(timezone.utc)
+    task_settings = {
+        "root_path": "/Users/Drew5/Desktop/DEV/IVATesting4/assets/videos",
+        "file_type": "mp4",
+        "resolution": "Original",
+        "interval": "10",  # in seconds
+        "interval_units": "Seconds",
+        "clip_length": "5",
+        "clip_length_units": "Seconds",
+        "start_time": start_time.isoformat(),
+    }
+    
+    #Open the video file
+    cap = cv2.VideoCapture(video_path)
+    
+    if not cap.isOpened():
+        print(f"ERROR: Could not open video file: {video_path}")
+    else:
+        print(f"Testing scheduled video capture with video: {video_path}")
+        
+        #Get video FPS for proper timing
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        spf = 1/fps  # seconds per frame
+        print(f"Video FPS: {fps}, Seconds per frame: {spf}")
+        
+        SLEEP_TIME = 1/30000  # Micro sleep time from camera_streamer.py
+        
+        #Track real start time for timing calculations
+        test_start_time = time.time()
+        
+        #Simulate frame processing at real-time speed
+        count = 0
+        overshoot = 0
+        
+        #Calculate simulation timestamp offset from start
+        start_timestamp = start_time.timestamp()
+        
+        while True:
+            cycle_start = time.time()
+            
+            ret, frame = cap.read()
+            if not ret:
+                #End of video or error
+                print("End of video or error reading frame")
+                break
+            
+            #Calculate elapsed time since test started
+            elapsed_real_time = time.time() - test_start_time
+            
+            #Create timestamp based on elapsed time from the fixed start time
+            sim_timestamp = datetime.fromtimestamp(start_timestamp + elapsed_real_time, tz=timezone.utc)
+            task_settings["timestamp"] = sim_timestamp.isoformat()
+            
+            #Call save_frame with the current frame
+            result = save_frame(frame, camera_id, task_uuid, task_settings, "scheduled_video_capture")
+            
+            if result:
+                print(f"Video saved to: {result}")
+            
+            #Apply the timing logic to align with real-time
+            wait = True
+            while wait:
+                time_offset = time.time() - cycle_start
+                if time_offset + overshoot >= 0.9945*spf:
+                    wait = False
+                    overshoot = max(time_offset - spf, 0)
+                else:
+                    time.sleep(SLEEP_TIME)
+            
+            count += 1
+            #Break after 10000 frames for test
+            if count >= 10000:
+                break
+                
+        #Clean up
+        cap.release()
+        print("Test completed")
+        
