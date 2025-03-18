@@ -257,7 +257,7 @@ if __name__ == '__main__':
     os.environ['CB_SYSTEM_KEY'] = "test_system_key"
     
     #Path to test video - replace with your actual path
-    video_path = '/Users/Drew5/Desktop/DEV/IVATesting4/timerVideo.mp4'
+    video_path = '/path/to/your/video.mp4'
     
     #Initialize camera and task IDs
     camera_id = "camera_1"
@@ -266,7 +266,7 @@ if __name__ == '__main__':
     #Create test settings
     start_time = datetime.now(timezone.utc)
     task_settings = {
-        "root_path": "/Users/Drew5/Desktop/DEV/IVATesting4/assets/videos",
+        "root_path": "/assets/videos",
         "file_type": "mp4",
         "resolution": "Original",
         "interval": "10",  # in seconds
