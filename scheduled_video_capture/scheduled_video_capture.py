@@ -239,11 +239,11 @@ def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
     should_end = active_session and capture_sessions.should_end_session(camera_id, task_uuid, timestamp, duration)
     
     if active_session:
-        if should_end:
+        if should_end or should_start: #End session if duration exceeded or new session needs to start
             saved_file_path = capture_sessions.end_session(camera_id, task_uuid, root_path, resolution, file_type, task_id, duration)
         else:
             capture_sessions.add_frame(camera_id, task_uuid, frame, timestamp)
-    elif should_start:
+    if should_start:
         capture_sessions.start_session(camera_id, task_uuid, timestamp, frame_shape)
     
     return saved_file_path

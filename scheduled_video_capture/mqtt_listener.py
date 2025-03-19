@@ -33,6 +33,13 @@ def on_message(message):
         #Get the frame from shared memory
         frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
         
+        #Untie the frame from shared memory
+        frame = frame.copy()
+        
+        #Close shared memory
+        if existing_mem:
+            existing_mem.close()
+
         #Check frame validity
         invalid_frame = False
         if frame is None:
@@ -46,8 +53,6 @@ def on_message(message):
             invalid_frame = True
         
         if invalid_frame:
-            if existing_mem:
-                existing_mem.close()
             return
             
     except Exception as e:
@@ -57,10 +62,6 @@ def on_message(message):
         return
     
     path = save_frame(frame, camera_id, task_uuid, task_settings, TASK_ID)    
-    
-    #Close shared memory before processing to avoid locking it
-    if existing_mem:
-        existing_mem.close()
     
     if path:
         print(f'VIDEO SAVED TO: {path}')
