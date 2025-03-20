@@ -326,8 +326,8 @@ if __name__ == '__main__':
             #Apply the timing logic to align with real-time
             wait = True
             while wait:
-                time_offset = time.time() - cycle_start
-                if time_offset + overshoot >= 0.9945*spf:
+                time_offset = time.time() - cycle_start + overshoot
+                if time_offset >= spf:
                     wait = False
                     overshoot = max(time_offset - spf, 0)
                 else:
