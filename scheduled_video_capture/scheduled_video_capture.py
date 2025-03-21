@@ -266,7 +266,7 @@ if __name__ == '__main__':
     #Create test settings
     start_time = datetime.now(timezone.utc)
     task_settings = {
-        "root_path": "/assets/videos",
+        "root_path": "./assets/videos",
         "file_type": "mp4",
         "resolution": "Original",
         "interval": "10",  # in seconds
