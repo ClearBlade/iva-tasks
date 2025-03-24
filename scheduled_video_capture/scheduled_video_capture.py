@@ -161,14 +161,16 @@ class VideoCaptureSessions:
             else:
                 #MP4 codec
                 try:
-                    fourcc = cv2.VideoWriter_fourcc(*'avc1')  #H.264 codec
+                    fourcc = cv2.VideoWriter_fourcc(*'FMP4')  #FMP4 codec
                 except:
                     try:
-                        print("WARNING: avc1 codec not available, falling back to H264")
-                        fourcc = cv2.VideoWriter_fourcc(*'H264')
+                        print("WARNING: FMP4 codec not available, falling back to MP4V")
+                        fourcc = cv2.VideoWriter_fourcc(*'mp4v') #MP4V codec
                     except:
-                        print("WARNING: H264 codec not available, falling back to MP4V")
-                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')  #Fallback
+                        print("ERROR: No suitable codec found for MP4 video")
+                        del self.sessions[camera_id][task_uuid]
+                        return ""
+                        
         
             #Create VideoWriter
             writer = cv2.VideoWriter(file_path, fourcc, fps, (width, height))
