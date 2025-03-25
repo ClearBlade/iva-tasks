@@ -10,8 +10,9 @@ import glob
 
 #Constants
 DATETIME_FORMAT = '%Y-%m-%d_%H.%M.%S'
-TEMP_DIR = './recordings'
-RECORDINGS_CACHE_DIR = './recordings_cache'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMP_DIR = os.path.join(BASE_DIR, 'recordings')
+RECORDINGS_CACHE_DIR = os.path.join(BASE_DIR, 'recordings_cache')
 SYSTEM_KEY = os.environ.get('CB_SYSTEM_KEY', 'default_system')
 
 #class for storing timestamp of last video capture start and/or last snapshot to be used so no other video capture or snapshot is started before retrigger delay
@@ -20,14 +21,13 @@ class LastCaptureTime:
         self.last_video_capture = None
         self.last_snapshot = None
         
-time_units = {
+TIME_UNITS = {
     'Minutes': 60,
     'Hours': 3600,
     'Days': 86400
 }
 
-supported_video_file_types = ['mp4', 'avi']
-supported_image_file_types = ['png', 'jpg']
+SUPPORTED_IMAGE_FILE_TYPES = ['png', 'jpg']
 
 def clear_recordings(task_id, camera_id='*'):
     """Find and delete all directories/files matching TEMP_DIR/*/*/task_id Then find and delete all directories/files matching RECORDINGS_CACHE_DIR/task_id/*/*/scheduled_video_capture"""
@@ -45,9 +45,32 @@ def remove_files(pattern):
             os.remove(path)
 
 def ensure_dir_exists(directory):
-    """Ensure a directory exists, creating it if necessary"""
-    os.makedirs(directory, exist_ok=True)
-    return directory
+    """Ensure a directory exists, creating it if necessary with better error handling"""
+    try:
+        os.makedirs(directory, exist_ok=True)
+        #Test write permissions
+        if not os.access(directory, os.W_OK):
+            print(f"WARNING: Directory {directory} is not writable")
+            #Try to use a fallback directory
+            fallback = os.path.join(os.path.expanduser("~"), "iva_recordings")
+            os.makedirs(fallback, exist_ok=True)
+            print(f"Using fallback directory: {fallback}")
+            return fallback
+        return directory
+    except PermissionError:
+        print(f"ERROR: Permission denied when creating directory: {directory}")
+        #Use fallback directory in user's home
+        fallback = os.path.join(os.path.expanduser("~"), "iva_recordings")
+        os.makedirs(fallback, exist_ok=True)
+        print(f"Using fallback directory: {fallback}")
+        return fallback
+    except OSError as e:
+        print(f"ERROR: Failed to create directory {directory}: {e}")
+        #Create a safe directory name by removing problematic characters
+        safe_dir = os.path.join(os.path.expanduser("~"), "iva_recordings")
+        os.makedirs(safe_dir, exist_ok=True)
+        print(f"Using fallback directory: {safe_dir}")
+        return safe_dir
 
 def get_video_paths(base_path):
     """Get all video paths in a directory structure sorted by creation time (oldest first)"""
@@ -87,16 +110,30 @@ def timestamp_from_filename(filename):
         return None
 
 def create_video_path(camera_id, task_id, root_path, file_type='mp4'):
-    """Create a path for saving a video with current timestamp"""
+    """Create a path for saving a video with current timestamp with better error handling"""
     now = datetime.now()
     date_str = now.strftime('%Y-%m-%d')
     time_str = now.strftime('%H.%M.%S')
     timestamp = f"{date_str}_{time_str}"
    
-    save_dir = os.path.join(root_path, SYSTEM_KEY, camera_id, task_id, date_str)
-    ensure_dir_exists(save_dir)
-   
-    return os.path.join(save_dir, f"{timestamp}.{file_type.lower()}")
+    #Normalize the root path - remove any ./ prefix and ensure it's absolute
+    if root_path.startswith('./'):
+        root_path = root_path[2:]
+    
+    if not os.path.isabs(root_path):
+        #If path is not absolute, make it relative to BASE_DIR
+        root_path = os.path.join(BASE_DIR, root_path)
+    
+    try:
+        save_dir = os.path.join(root_path, SYSTEM_KEY, camera_id, task_id, date_str)
+        save_dir = ensure_dir_exists(save_dir)
+        return os.path.join(save_dir, f"{timestamp}.{file_type.lower()}")
+    except Exception as e:
+        #Last resort fallback
+        print(f"ERROR creating path: {e}")
+        fallback = os.path.join(os.path.expanduser("~"), "iva_recordings", f"{timestamp}.{file_type.lower()}")
+        os.makedirs(os.path.dirname(fallback), exist_ok=True)
+        return fallback
 
 def add_to_shared_memory(task_uuid, frame):
         try:
@@ -299,7 +336,6 @@ def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter
    
     #Send to scheduled_video_capture
     adapter.publish('task/scheduled_video_capture/input', json.dumps(message))
-    print(f"Triggered lead time recording for camera {camera_id}, with interval: {interval}s")
 
 def setup_event_recording(camera_id, task_uuid, recording_lead_time, clip_length, adapter, task_id, quality, frame_shape):
     """Set up event recording for a camera"""
@@ -353,6 +389,21 @@ def handle_event_recording(
         updated_capture_time: Updated last_event_time value
     """
     current_time = time.time()
+       
+    #Validate and normalize root path
+    if root_path.startswith('/'):
+        #This is already an absolute path, use it directly
+        pass
+    elif root_path.startswith('./'):
+        #This is a relative path with dot prefix, remove the dot
+        root_path = root_path[2:]
+    
+    if not os.path.isabs(root_path):
+        #Convert to absolute path relative to BASE_DIR
+        root_path = os.path.abspath(os.path.join(BASE_DIR, root_path))
+    
+    #Create output path with validated root path
+    output_path = create_video_path(camera_id, task_id, root_path, file_type)
        
     #Path to temporary recordings for this camera/task
     temp_dir_path = os.path.join(TEMP_DIR, SYSTEM_KEY, camera_id, task_id)

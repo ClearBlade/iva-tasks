@@ -432,5 +432,170 @@ def detect_objects(camera_id, task_settings, input_frame, frame_shape, roi=None)
     return result_image, bboxes, list(objects_detected), get_total_objects(bboxes)
 
 if __name__ == '__main__':
-    #Test code here if needed
-    pass
+    import os
+    import time
+    import sys
+    import cv2
+    from datetime import datetime
+    from collections import deque
+    
+    #Add parent directory to path
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.append(parent_dir)
+    
+    #Save current working directory
+    original_dir = os.getcwd()
+    
+    try:
+        #Change directory to object_detection folder so it can find its assets
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+        
+        #Create a test environment
+        os.environ['CB_SYSTEM_KEY'] = "test_system_key"
+        
+        #Test video path - update this path to your test video
+        video_path = os.path.abspath('/your/path/to/test_video.mp4')
+        
+        #Open the test video
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            print(f"ERROR: Could not open video file: {video_path}")
+            exit(1)
+        
+        #Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        spf = 1.0 / fps  #seconds per frame in the original video
+        print(f"Video FPS: {fps}, Seconds per frame: {spf:.6f}")
+        
+        #Initialize with a default frame skip
+        frame_skip = 1
+        
+        #Read the first frame for initialization
+        ret, initial_frame = cap.read()
+        if not ret:
+            print("Failed to read the first frame")
+            exit(1)
+        
+        #Get frame dimensions
+        height, width = initial_frame.shape[:2]
+        frame_shape = (width, height)
+        
+        #Create object detection settings
+        object_detection_settings = {
+            "objects_to_detect": {
+                "person": {
+                    "enable_tracking": True,
+                    "enable_blur": False,
+                    "show_boxes": True,
+                    "show_labels": True,
+                    "confidence_threshold": 0.65
+                }
+            }
+        }
+        
+        #Create a window to display the frames
+        cv2.namedWindow('Object Detection Test', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Object Detection Test', width // 2, height // 2)
+        
+        frame_count = 0
+        processed_count = 0
+        
+        #For calculating average processing time
+        process_times = deque(maxlen=10)
+        calibration_complete = False
+        
+        print("Testing object detection...")
+        print("Calibrating frame skip rate with first 10 frames...")
+        
+        #Variable for printing detection info (limit to once every 5 seconds)
+        last_print_time = 0
+        
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            frame_count += 1
+            
+            #Process only selected frames based on frame_skip
+            #During calibration, process all frames
+            if not calibration_complete or frame_count % frame_skip == 0:
+                process_start = time.time()
+                
+                try:
+                    #Detect objects in the frame
+                    annotated_frame, bboxes, objects_detected, total_objects = detect_objects(
+                        "test_camera", object_detection_settings, frame.copy(), frame_shape
+                    )
+                    
+                    #Print detection info (but not more than once every 5 seconds)
+                    current_time = time.time()
+                    if current_time - last_print_time >= 5.0:
+                        print(f"\nFrame {frame_count} - Detected objects: {objects_detected}")
+                        print(f"Total objects detected: {total_objects}")
+                        
+                        #Print bounding box data
+                        print("Bounding boxes:")
+                        for label, bbox in bboxes.items():
+                            print(f"  {label}: {bbox}")
+                        
+                        last_print_time = current_time
+                    
+                    #Display the frame
+                    cv2.imshow('Object Detection Test', annotated_frame)
+                    
+                    #Record processing time
+                    process_time = time.time() - process_start
+                    process_times.append(process_time)
+                    processed_count += 1
+                    
+                    #After 10 frames, calculate the optimal frame skip to maintain real-time playback
+                    if not calibration_complete and len(process_times) == 10:
+                        avg_process_time = sum(process_times) / len(process_times)
+                        print(f"Average processing time per frame: {avg_process_time:.6f} seconds")
+                        
+                        #Calculate how many frames to skip to maintain real-time playback
+                        #If process_time > spf, we need to skip frames
+                        if avg_process_time > spf:
+                            frame_skip = max(1, int(avg_process_time / spf))
+                            print(f"Setting frame skip to {frame_skip} to maintain real-time playback")
+                        else:
+                            frame_skip = 1
+                            print("Processing every frame (no skipping needed)")
+                            
+                        calibration_complete = True
+                
+                except Exception as e:
+                    print(f"Error in frame processing: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    process_times.append(0.1)  #Use a default value for errors
+            
+            #Check for key press to quit
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+            
+            #Status update every 100 processed frames
+            if processed_count % 100 == 0 and processed_count > 0:
+                print(f"Processed {processed_count} frames (read {frame_count} frames)")
+            
+            #Break after a reasonable number of frames
+            if frame_count >= 10000:
+                print("Test completed after maximum number of frames")
+                break
+        
+        #Clean up
+        cap.release()
+        cv2.destroyAllWindows()
+        print(f"\nTest completed. Processed {processed_count} out of {frame_count} frames.")
+        if len(process_times) > 0:
+            print(f"Final average processing time: {sum(process_times)/len(process_times):.6f} seconds")
+    
+    except Exception as e:
+        print(f"Test error: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    finally:
+        #Change back to original directory
+        os.chdir(original_dir)

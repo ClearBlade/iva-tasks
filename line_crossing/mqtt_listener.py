@@ -11,6 +11,7 @@ from clearblade_mqtt_library import AdapterLibrary
 from dotenv import load_dotenv
 from line_crossing import CameraTracker, DIRECTION_A_TO_B, DIRECTION_B_TO_A
 import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from recording_utils import clear_recordings
 
 TASK_ID = 'line_crossing'
@@ -29,6 +30,7 @@ def handle_sigterm(signum, frame):
     sys.exit(0)
 
 def on_message(message):
+    global existing_mem
     data = json.loads(message.payload.decode())
     camera_id = data.get('camera_id')
     task_settings = data.get('task_settings', {})
@@ -41,59 +43,68 @@ def on_message(message):
         print('Invalid task settings: No objects have tracking enabled')
         return
     frame_shape = data.get('frame_shape')
-    existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
-    drawn_frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
-    if camera_id not in camera_trackers:
-        camera_trackers[camera_id] = CameraTracker(drawn_frame, frame_shape, line)
-    detection_output = data.get('object_detection_output', {})
-    direction = task_settings.get('direction', None)
-    box_data = detection_output.get('bboxes', {})
-    #Set direction to None if it's not A_TO_B or B_TO_A
-    #Allows for detection of all crossings regardless of direction
-    if direction not in [DIRECTION_A_TO_B, DIRECTION_B_TO_A]:
-        direction = None
-    camera_trackers[camera_id].update(box_data, line)
-    results = camera_trackers[camera_id].process_crossings(objects_to_detect, direction)
-    drawn_frame_with_line = camera_trackers[camera_id].draw_line(drawn_frame)
-    outputs = data.get('publish_path', [f'task/{TASK_ID}/output/{camera_id}'])
-    if len(outputs) > 1:
-        if INPUT_TOPIC in outputs:
-            data['publish_path'].remove(INPUT_TOPIC)
-        output_topic = outputs[0]
-    else:
-        output_topic = f'task/{TASK_ID}/output/{camera_id}'
-    event = False
-    if any(results.values()):
-        for classification, crossing in results.items():
-            if crossing and (direction is None or crossing == direction):
-                if isinstance(crossing, list):
-                    crossing = crossing[0]
-                data[f"{TASK_ID}_output"] = {
-                    "direction": crossing,
-                    "crossing": True,
-                    "classification": classification,
-                    "message": task_settings.get(crossing, 'Crossing detected')
-                }
-                event = True          
-                existing_mem.buf[:drawn_frame_with_line.nbytes] = drawn_frame_with_line.tobytes()
-                adapter.publish(output_topic, json.dumps(data))
-    else: #No crossings detected
-        data[f"{TASK_ID}_output"] = {
-            "direction": None,
-            "crossing": False,
-            "classification": None,
-        }
-        existing_mem.buf[:drawn_frame_with_line.nbytes] = drawn_frame_with_line.tobytes()
-        adapter.publish(output_topic, json.dumps(data))
+    try:    
+        existing_mem = shm.SharedMemory(name=f"{task_uuid}_frame")
+        drawn_frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
+        drawn_frame_copy = drawn_frame.copy()
+        if camera_id not in camera_trackers:
+            camera_trackers[camera_id] = CameraTracker(drawn_frame_copy, frame_shape, line)
+        detection_output = data.get('object_detection_output', {})
+        direction = task_settings.get('direction', None)
+        box_data = detection_output.get('bboxes', {})
+        #Set direction to None if it's not A_TO_B or B_TO_A
+        #Allows for detection of all crossings regardless of direction
+        if direction not in [DIRECTION_A_TO_B, DIRECTION_B_TO_A]:
+            direction = None
+        camera_trackers[camera_id].update(box_data, line)
+        results = camera_trackers[camera_id].process_crossings(objects_to_detect, direction)
+        drawn_frame_with_line = camera_trackers[camera_id].draw_line(drawn_frame_copy)
+        outputs = data.get('publish_path', [f'task/{TASK_ID}/output/{camera_id}'])
+        if len(outputs) > 1:
+            if INPUT_TOPIC in outputs:
+                data['publish_path'].remove(INPUT_TOPIC)
+            output_topic = outputs[0]
+        else:
+            output_topic = f'task/{TASK_ID}/output/{camera_id}'
+        event = False
+        if any(results.values()):
+            for classification, crossing in results.items():
+                if crossing and (direction is None or crossing == direction):
+                    if isinstance(crossing, list):
+                        crossing = crossing[0]
+                    data[f"{TASK_ID}_output"] = {
+                        "direction": crossing,
+                        "crossing": True,
+                        "classification": classification,
+                        "message": task_settings.get(crossing, 'Crossing detected')
+                    }
+                    event = True          
+                    existing_mem.buf[:drawn_frame_with_line.nbytes] = drawn_frame_with_line.tobytes()
+                    adapter.publish(output_topic, json.dumps(data))
+        else: #No crossings detected
+            data[f"{TASK_ID}_output"] = {
+                "direction": None,
+                "crossing": False,
+                "classification": None,
+            }
+            existing_mem.buf[:drawn_frame_with_line.nbytes] = drawn_frame_with_line.tobytes()
+            adapter.publish(output_topic, json.dumps(data))
+    except Exception as e:
+        print(f"Error processing frame: {e}")
+    finally:
+        #Always close the shared memory
+        if 'existing_mem' in locals() and existing_mem:
+            existing_mem.close()
     
-    if data.get('task_id', TASK_ID) == TASK_ID: #to make sure the needs_video/snapshot is meant for this task
-        from recording_utils import LastCaptureTime, time_units, supported_image_file_types, supported_video_file_types
+    if data.get('task_id', TASK_ID) == TASK_ID: #to make sure the video/snapshot is meant for this task
+        from recording_utils import LastCaptureTime, TIME_UNITS, SUPPORTED_IMAGE_FILE_TYPES
         needs_video = False
         needs_snapshot = False
+        clip_length = int(task_settings.get('clip_length', 0) * TIME_UNITS.get(task_settings.get('clip_length_units', 'Seconds'), 1))
         file_type = task_settings.get('file_type', '').lower()
-        if file_type in supported_video_file_types:
+        if clip_length > 0:
             needs_video = True
-        elif file_type in supported_image_file_types:
+        elif file_type in SUPPORTED_IMAGE_FILE_TYPES:
             needs_snapshot = True
         elif file_type != '':
             print(f'Unsupported file type: {file_type}')
@@ -104,8 +115,6 @@ def on_message(message):
                 setup_event_recording, handle_event_recording, add_to_shared_memory
             )
             add_to_shared_memory(scheduled_video_uuid, drawn_frame_with_line)
-            #Get the clip_length and clip_length_units from task_settings
-            clip_length = int(task_settings.get('clip_length', 15) * time_units.get(task_settings.get('clip_length_units', 'Seconds'), 1))
             #Get recording_lead_time from task_settings in seconds
             recording_lead_time = int(task_settings.get('recording_lead_time', 5))
         
@@ -114,11 +123,8 @@ def on_message(message):
                 last_capture_time[camera_id] = LastCaptureTime()
                 last_capture_time[camera_id].last_video_capture = time.time() - clip_length
                 clear_recordings(TASK_ID, camera_id)
-        
-            #Get other settings
-            file_type = task_settings.get('file_type', 'mp4').lower()
-            if file_type not in supported_video_file_types:
-                file_type = 'mp4'
+
+            file_type = 'mp4'
         
             #Setup event recording (initializes cache and temp directories if needed)
             cache_base_path = setup_event_recording(
@@ -146,7 +152,7 @@ def on_message(message):
                 data[f"{TASK_ID}_output"]  #To update with the saved_video_path
             )
         elif needs_snapshot:
-            retrigger_delay = int(task_settings.get('retrigger_delay', 5) * time_units.get(task_settings.get('retrigger_delay_units', 'Seconds'), 1))
+            retrigger_delay = int(task_settings.get('retrigger_delay', 5) * TIME_UNITS.get(task_settings.get('retrigger_delay_units', 'Seconds'), 1))
             if camera_id not in last_capture_time:
                 last_capture_time[camera_id] = LastCaptureTime()
                 last_capture_time[camera_id].last_snapshot = time.time()-retrigger_delay
@@ -158,11 +164,10 @@ def on_message(message):
                 if not os.path.exists(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}'):
                     os.makedirs(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}')
                 file_type = task_settings.get('file_type', 'png').lower()
-                if file_type not in supported_image_file_types:
+                if file_type not in SUPPORTED_IMAGE_FILE_TYPES:
                     file_type = 'png'
-                cv2.imwrite(f'{root_path}/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}', drawn_frame_with_line)
-                print('snapshot saved')
-    existing_mem.close()
+                cv2.imwrite(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}', drawn_frame_with_line)
+                print(f'snapshot saved to {root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}')
     
 signal.signal(signal.SIGTERM, handle_sigterm)
 

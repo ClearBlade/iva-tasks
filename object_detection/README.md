@@ -25,9 +25,9 @@
                     "confidence_threshold": 0.4,
                 },
             },
-            "file_type": "mp4",                             // {string} File type of video or image ["mp4", "avi", "jpg", "png"], used to determine if the task needs to save image or video
+            "file_type": "mp4",                             // {string} File type of image ["jpg", "png"] used to determine if image saving is needed for task
             "recording_lead_time": 5,                       // {integer} Time in seconds video should start before object is detected.
-            "clip_length": 15,                              // {integer} Desired duration of saved video
+            "clip_length": 15,                              // {integer} Desired duration of saved video (used to determine if video saving is needed for task)
             "retrigger_delay": 3,                           // {integer} Minimum time between saved snapshots
             "clip_length_units": "Seconds",                 // {string} Units of clip_length value. Accepts ["Seconds", "Minutes", "Hours", "Days"]. Defaults to "Seconds"
             "retrigger_delay_units": "Minutes",             // {string} Units of retrigger_delay value

@@ -219,5 +219,221 @@ class CameraTracker:
         return image
     
 if __name__ == '__main__':
-    #Test code here if needed
-    pass
+    import os
+    import time
+    import sys
+    import numpy as np
+    import cv2
+    from collections import deque
+    
+    #Add parent directory to path to import object_detection
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.append(parent_dir)
+    
+    #Save current working directory
+    original_dir = os.getcwd()
+    
+    try:
+        #Change directory to object_detection folder so it can find its assets
+        os.chdir(os.path.join(parent_dir, 'object_detection'))
+        
+        #Import after changing directory
+        from object_detection.object_detection import detect_objects
+        
+        #Create a test environment
+        os.environ['CB_SYSTEM_KEY'] = "test_system_key"
+        
+        #Test video path - provide an absolute path to your test video
+        video_path = os.path.abspath('/your/path/to/test_video.mp4')
+        
+        #Define your test line
+        test_line = [[740, 0], [741, 720]]
+        
+        #Open the test video
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            print(f"ERROR: Could not open video file: {video_path}")
+            exit(1)
+        
+        #Get video properties
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        spf = 1.0 / fps  #seconds per frame in the original video
+        print(f"Video FPS: {fps}, Seconds per frame: {spf:.6f}")
+        
+        #Initialize with a default frame skip
+        frame_skip = 1
+        
+        #Read the first frame for initialization
+        ret, initial_frame = cap.read()
+        if not ret:
+            print("Failed to read the first frame")
+            exit(1)
+        
+        #Get frame dimensions
+        height, width = initial_frame.shape[:2]
+        frame_shape = (width, height)
+        
+        #Initialize the tracker
+        tracker = CameraTracker(initial_frame, frame_shape, test_line)
+        
+        #Create object detection settings
+        object_detection_settings = {
+            "objects_to_detect": {
+                "person": {
+                    "enable_tracking": True,
+                    "enable_blur": False,
+                    "show_boxes": True,
+                    "show_labels": True,
+                    "confidence_threshold": 0.35
+                }
+            }
+        }
+        
+        #Create a window to display the frames
+        cv2.namedWindow('Line Crossing Test', cv2.WINDOW_NORMAL)
+        cv2.resizeWindow('Line Crossing Test', width // 2, height // 2)
+        
+        frame_count = 0
+        processed_count = 0
+        
+        #For calculating average processing time
+        process_times = deque(maxlen=10)
+        calibration_complete = False
+        
+        print("Testing line crossing detection with real object detection...")
+        print("Calibrating frame skip rate with first 10 frames...")
+        
+        #Variable for pause timing
+        pause_until = 0
+        last_frame = None
+        
+        while True:
+            #Check if we're in a pause state (for crossing detected)
+            current_time = time.time()
+            if current_time < pause_until:
+                #During pause, just refresh the display and wait
+                if last_frame is not None:
+                    cv2.imshow('Line Crossing Test', last_frame)
+                key = cv2.waitKey(1)
+                if key == ord('q'):
+                    break
+                time.sleep(0.01)  #Small sleep to avoid CPU hogging
+                continue
+            
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            frame_count += 1
+            
+            #Process only selected frames based on frame_skip
+            #During calibration, process all frames
+            if not calibration_complete or frame_count % frame_skip == 0:
+                process_start = time.time()
+                
+                #Use object detection to get bounding boxes
+                try:
+                    annotated_frame, bboxes, objects_detected, total_objects = detect_objects(
+                        "test_camera", object_detection_settings, frame.copy(), frame_shape
+                    )
+                    
+                    #Format bounding boxes for the tracker
+                    box_data = {}
+                    for label, bbox in bboxes.items():
+                        if isinstance(bbox[0], list):  #Handle multiple detections of same class
+                            for i, box in enumerate(bbox):
+                                box_data[f"{label}_{i}"] = box
+                        else:
+                            box_data[label] = bbox
+                    
+                    #Update tracker with detected boxes
+                    tracker.update(box_data, test_line)
+                    
+                    #Process crossings
+                    results = tracker.process_crossings(['person'], None)
+                    
+                    #Draw the line on the frame
+                    annotated_frame = tracker.draw_line(annotated_frame)
+                    
+                    #Check if a crossing was detected
+                    if results and 'person' in results and results['person']:
+                        crossing_direction = results['person'][0]
+                        direction_text = "A to B" if crossing_direction == DIRECTION_A_TO_B else "B to A"
+                        action_text = "entered" if crossing_direction == DIRECTION_A_TO_B else "exited"
+                        
+                        print(f"Person {action_text}! Direction: {direction_text}")
+                        
+                        #Add text to the frame
+                        cv2.putText(
+                            annotated_frame, 
+                            f"PERSON {action_text.upper()}!", 
+                            (50, 50), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 
+                            1, 
+                            (0, 0, 255), 
+                            2, 
+                            cv2.LINE_AA
+                        )
+                        
+                        #Set pause time to freeze the frame
+                        pause_until = time.time() + 0.5  #Pause for 0.5 seconds
+                    
+                    #Save the current frame for displaying during pause
+                    last_frame = annotated_frame.copy()
+                    
+                    #Display the frame
+                    cv2.imshow('Line Crossing Test', annotated_frame)
+                    
+                    #Record processing time
+                    process_time = time.time() - process_start
+                    process_times.append(process_time)
+                    processed_count += 1
+                    
+                    #After 10 frames, calculate the optimal frame skip to maintain real-time playback
+                    if not calibration_complete and len(process_times) == 10:
+                        avg_process_time = sum(process_times) / len(process_times)
+                        print(f"Average processing time per frame: {avg_process_time:.6f} seconds")
+                        
+                        #Calculate how many frames to skip to maintain real-time playback
+                        #If process_time > spf, we need to skip frames
+                        if avg_process_time > spf:
+                            frame_skip = max(1, int(avg_process_time / spf))
+                            print(f"Setting frame skip to {frame_skip} to maintain real-time playback")
+                        else:
+                            frame_skip = 1
+                            print("Processing every frame (no skipping needed)")
+                            
+                        calibration_complete = True
+                
+                except Exception as e:
+                    print(f"Error in frame processing: {e}")
+                    process_times.append(0.1)  #Use a default value for errors
+                    if last_frame is None:
+                        last_frame = frame.copy()
+            
+            #Add a small delay to make display smoother
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+            
+            #Status update every 100 processed frames
+            if processed_count % 100 == 0 and processed_count > 0:
+                print(f"Processed {processed_count} frames (read {frame_count} frames)")
+            
+            #Break after a reasonable number of frames
+            if frame_count >= 10000:
+                print("Test completed after maximum number of frames")
+                break
+        
+        #Clean up
+        cap.release()
+        cv2.destroyAllWindows()
+        print(f"Test completed. Processed {processed_count} out of {frame_count} frames.")
+        if len(process_times) > 0:
+            print(f"Final average processing time: {sum(process_times)/len(process_times):.6f} seconds")
+    
+    except Exception as e:
+        print(f"Test error: {e}")
+    
+    finally:
+        #Change back to original directory
+        os.chdir(original_dir)
