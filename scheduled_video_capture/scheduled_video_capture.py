@@ -164,7 +164,7 @@ class VideoCaptureSessions:
                     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  #MP4V codec
                 except:
                     try:
-                        print("WARNING: FMP4 codec not available, falling back to MJPG")
+                        print("WARNING: MP4V codec not available, falling back to MJPG")
                         fourcc = cv2.VideoWriter_fourcc(*'MJPG') #MJPG codec
                     except:
                         print("ERROR: No suitable codec found for MP4 video")
