@@ -62,7 +62,7 @@ def on_message(message):
     if data.get('task_id', TASK_ID) == TASK_ID: #to make sure the needs_video is meant for this task
         from recording_utils import LastCaptureTime, TIME_UNITS, SUPPORTED_IMAGE_FILE_TYPES
         event = (len(objects_detected) > 0 and total_objects > 0)
-        root_path = task_settings.get('root_path', '/assets/saved_videos')
+        root_path = task_settings.get('root_path', {'id': 'default_id', 'path': './assets/videos'})
         file_type = task_settings.get('file_type', '').lower()
         needs_video = False
         needs_snapshot = False
@@ -126,13 +126,13 @@ def on_message(message):
                 subfolder = timestamp.split('_')[0]
                 subfolder = timestamp.split('_')[0]
                 system_key = os.environ.get('CB_SYSTEM_KEY', 'default_system')
-                if not os.path.exists(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}'):
-                    os.makedirs(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}')
+                if not os.path.exists(f'{root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}'):
+                    os.makedirs(f'{root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}')
                 file_type = task_settings.get('file_type', 'png').lower()
                 if file_type not in SUPPORTED_IMAGE_FILE_TYPES:
                     file_type = 'png'
-                cv2.imwrite(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}', image)
-                print(f'snapshot saved to {root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}')
+                cv2.imwrite(f'{root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}', image_with_bboxes)
+                print(f'snapshot saved to {root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}')
     publish_path = data.get('publish_path')
     if len(publish_path) > 1:
         publish_path.remove(INPUT_TOPIC)

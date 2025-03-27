@@ -108,7 +108,7 @@ def on_message(message):
             needs_snapshot = True
         elif file_type != '':
             print(f'Unsupported file type: {file_type}')
-        root_path = task_settings.get('root_path', './assets/saved_videos')
+        root_path = task_settings.get('root_path', {'id': 'default_id', 'path': './assets/videos'})
         if needs_video:
             scheduled_video_uuid = task_uuid + '_annotated'
             from recording_utils import (
@@ -161,13 +161,13 @@ def on_message(message):
                 timestamp = time.strftime('%Y-%m-%d_%H.%M.%S')
                 subfolder = timestamp.split('_')[0]
                 system_key = os.environ.get('CB_SYSTEM_KEY', 'default_system')
-                if not os.path.exists(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}'):
-                    os.makedirs(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}')
+                if not os.path.exists(f'{root_path["path"]}/{system_key}/{root_path["id"]}/outbox/{camera_id}/{TASK_ID}/{subfolder}'):
+                    os.makedirs(f'{root_path["path"]}/{system_key}/{root_path["id"]}/outbox/{camera_id}/{TASK_ID}/{subfolder}')
                 file_type = task_settings.get('file_type', 'png').lower()
                 if file_type not in SUPPORTED_IMAGE_FILE_TYPES:
                     file_type = 'png'
-                cv2.imwrite(f'{root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}', drawn_frame_with_line)
-                print(f'snapshot saved to {root_path}/{system_key}/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}')
+                cv2.imwrite(f'{root_path["path"]}/{system_key}/{root_path["id"]}/outbox/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}', drawn_frame_with_line)
+                print(f'snapshot saved to {root_path["path"]}/{system_key}/{root_path["id"]}/outbox/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}')
     
 signal.signal(signal.SIGTERM, handle_sigterm)
 
