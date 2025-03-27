@@ -1,0 +1,6 @@
+scipy==1.10.1
+numpy==1.24.4
+opencv-python==4.11.0.86
+clearblade
+python-dotenv
+python-dateutil
