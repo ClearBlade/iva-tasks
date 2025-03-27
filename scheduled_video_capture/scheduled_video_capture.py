@@ -161,11 +161,11 @@ class VideoCaptureSessions:
             else:
                 #MP4 codec
                 try:
-                    fourcc = cv2.VideoWriter_fourcc(*'FMP4')  #FMP4 codec
+                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  #MP4V codec
                 except:
                     try:
-                        print("WARNING: FMP4 codec not available, falling back to MP4V")
-                        fourcc = cv2.VideoWriter_fourcc(*'mp4v') #MP4V codec
+                        print("WARNING: FMP4 codec not available, falling back to MJPG")
+                        fourcc = cv2.VideoWriter_fourcc(*'MJPG') #MJPG codec
                     except:
                         print("ERROR: No suitable codec found for MP4 video")
                         del self.sessions[camera_id][task_uuid]
