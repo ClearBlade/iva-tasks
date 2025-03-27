@@ -46,7 +46,7 @@ def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str,
     frame = cv2.resize(frame, (0, 0), fx=get_quality_perc(resolution)/100, fy=get_quality_perc(resolution)/100, interpolation=cv2.INTER_AREA)
 
     system_key = os.environ['CB_SYSTEM_KEY']
-    save_path = os.path.join(root_path, system_key, camera_id, task_id, sub_folder)
+    save_path = os.path.join(root_path['path'], system_key, root_path['id'], 'outbox', camera_id, task_id, sub_folder)
     os.makedirs(save_path, exist_ok=True)
         
     file_path = os.path.join(save_path, f"{name}.{file_type.lower()}")
@@ -54,7 +54,7 @@ def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str,
     return file_path
 
 def save_frame(frame, camera_id, task_settings, task_id):
-    root_path = task_settings.get("root_path", "./assets/saved_frames")
+    root_path = task_settings.get("root_path", {"id": "default_id", "path": "./assets/videos"})
     file_type = task_settings.get("file_type", "JPG")
     resolution = task_settings.get("resolution", "Low")
     interval = task_settings.get("interval", 1)
@@ -78,7 +78,7 @@ if __name__ == '__main__':
 
     while True:
         path = save_frame(frame, camera_id, {
-            "root_path": "assets/saved_frames",
+            "root_path": {"id": "test_bucket_set_id", "path": "./assets/images"},
             "file_type": "PNG",
             "resolution": 'High',
             "interval": "5",

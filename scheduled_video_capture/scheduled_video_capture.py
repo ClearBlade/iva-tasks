@@ -102,7 +102,9 @@ class VideoCaptureSessions:
         
             #Create save path
             system_key = os.environ.get('CB_SYSTEM_KEY', 'default_system')
-            save_path = os.path.join(root_path, system_key, camera_id, task_id, date_str)
+            
+            save_path = os.path.join(root_path['path'], system_key, root_path['id'], 'outbox', camera_id, task_id, date_str)
+                
             os.makedirs(save_path, exist_ok=True)
         
             #Full path with filename
@@ -209,7 +211,7 @@ def get_quality_perc(resolution):
 capture_sessions = VideoCaptureSessions()
 
 def save_frame(frame, camera_id, task_uuid, task_settings, task_id):    
-    root_path = task_settings.get("root_path", "./assets/saved_videos")
+    root_path = task_settings.get("root_path", {"id": "default_id", "path": "./assets/videos"})
     file_type = task_settings.get("file_type", "mp4")
     resolution = task_settings.get("resolution", "Lowest")
     interval = int(task_settings.get("interval", 3600))
@@ -268,7 +270,7 @@ if __name__ == '__main__':
     #Create test settings
     start_time = datetime.now(timezone.utc)
     task_settings = {
-        "root_path": "./assets/videos",
+        "root_path": {"id": "test_bucket_set_id", "path": "./assets/videos"},
         "file_type": "mp4",
         "resolution": "Original",
         "interval": "10",  # in seconds
