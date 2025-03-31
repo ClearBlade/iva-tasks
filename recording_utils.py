@@ -29,10 +29,11 @@ TIME_UNITS = {
 
 SUPPORTED_IMAGE_FILE_TYPES = ['png', 'jpg']
 
-def clear_recordings(task_id, camera_id='*'):
-    """Find and delete all directories/files matching TEMP_DIR/*/*/task_id Then find and delete all directories/files matching RECORDINGS_CACHE_DIR/task_id/*/*/scheduled_video_capture"""
-    temp_pattern = os.path.join(TEMP_DIR, "*", camera_id, task_id)
-    cache_pattern = os.path.join(RECORDINGS_CACHE_DIR, task_id, "*", camera_id, "scheduled_video_capture")
+def clear_recordings(task_id, task_uuid='*', camera_id='*'):
+    """Find and delete all directories/files in both temp and cache locations"""
+    temp_pattern = os.path.join(TEMP_DIR, SYSTEM_KEY, camera_id, task_id, task_uuid)
+    cache_pattern = os.path.join(RECORDINGS_CACHE_DIR, SYSTEM_KEY, task_id, "outbox", camera_id, "scheduled_video_capture", f"{task_uuid}_annotated")
+
     remove_files(temp_pattern)
     remove_files(cache_pattern)
 
@@ -109,23 +110,26 @@ def timestamp_from_filename(filename):
     except ValueError:
         return None
 
-def create_video_path(camera_id, task_id, root_path, file_type='mp4'):
+def create_video_path(camera_id, task_id, task_uuid, root_path, file_type='mp4'):
     """Create a path for saving a video with current timestamp with better error handling"""
     now = datetime.now()
     date_str = now.strftime('%Y-%m-%d')
     time_str = now.strftime('%H.%M.%S')
     timestamp = f"{date_str}_{time_str}"
    
-    #Normalize the root path - remove any ./ prefix and ensure it's absolute
-    if root_path.startswith('./'):
-        root_path = root_path[2:]
+    path_base = root_path['path']
+    path_id = root_path['id']
+        
+    if path_base.startswith('./'):
+        path_base = path_base[2:]
     
-    if not os.path.isabs(root_path):
-        #If path is not absolute, make it relative to BASE_DIR
-        root_path = os.path.join(BASE_DIR, root_path)
+    if not os.path.isabs(path_base):
+        path_base = os.path.join(BASE_DIR, path_base)
+            
+    #Create path using object structure
+    save_dir = os.path.join(path_base, SYSTEM_KEY, path_id, 'outbox', camera_id, task_id, task_uuid, date_str)
     
     try:
-        save_dir = os.path.join(root_path, SYSTEM_KEY, camera_id, task_id, date_str)
         save_dir = ensure_dir_exists(save_dir)
         return os.path.join(save_dir, f"{timestamp}.{file_type.lower()}")
     except Exception as e:
@@ -279,9 +283,9 @@ def combine_and_trim_video(video_paths, output_path, start_time, clip_length):
     print(f"Combined and trimmed video saved to {output_path}")
     return output_path
 
-def setup_temp_dir(camera_id, task_id):
+def setup_temp_dir(camera_id, task_id, task_uuid):
     """Set up the temporary directory for assembling videos"""
-    temp_dir = ensure_dir_exists(os.path.join(TEMP_DIR, SYSTEM_KEY, camera_id, task_id))
+    temp_dir = ensure_dir_exists(os.path.join(TEMP_DIR, SYSTEM_KEY, camera_id, task_id, task_uuid))
     return temp_dir
 
 def clear_directory(dir):
@@ -309,11 +313,62 @@ def find_videos_for_time_range(videos, start_time, end_time, video_length):
    
     return sorted(relevant_videos, key=lambda x: timestamp_from_filename(x))
 
+def handle_snapshot_recording(camera_id, event, last_snapshot_time, retrigger_delay, root_path, file_type, task_id, task_uuid):
+    current_time = time.time()
+    saved_path = None
+    
+    if event and (current_time - last_snapshot_time >= retrigger_delay):
+        updated_snapshot_time = current_time
+        
+        timestamp = time.strftime('%Y-%m-%d_%H.%M.%S')
+        subfolder = timestamp.split('_')[0]
+        
+        system_key = os.environ.get('CB_SYSTEM_KEY', 'default_system')
+        
+        save_dir = f'{root_path["path"]}/{system_key}/{root_path["id"]}/outbox/{camera_id}/{task_id}/{task_uuid}/{subfolder}'
+        ensure_dir_exists(save_dir)
+        
+        if file_type not in SUPPORTED_IMAGE_FILE_TYPES:
+            file_type = 'png'
+            
+        saved_path = f'{save_dir}/{timestamp}.{file_type}'
+        
+        return updated_snapshot_time, saved_path
+        
+    return last_snapshot_time, None
+
+def process_task_settings(task_settings):
+    processed = {}
+    
+    processed['root_path'] = task_settings.get('root_path')
+    
+    processed['file_type'] = task_settings.get('file_type', '').lower()
+    
+    clip_length = int(task_settings.get('clip_length', 0))
+    clip_length_units = task_settings.get('clip_length_units', 'Seconds')
+    processed['clip_length'] = clip_length * TIME_UNITS.get(clip_length_units, 1)
+    
+    retrigger_delay = int(task_settings.get('retrigger_delay', 15))
+    retrigger_delay_units = task_settings.get('retrigger_delay_units', 'Seconds')
+    processed['retrigger_delay'] = retrigger_delay * TIME_UNITS.get(retrigger_delay_units, 1)
+    
+    processed['recording_lead_time'] = int(task_settings.get('recording_lead_time', 10))
+    
+    processed['resolution'] = task_settings.get('resolution', 'Low')
+    
+    processed['needs_video'] = processed['clip_length'] > 0
+    processed['needs_snapshot'] = not processed['needs_video'] and processed['file_type'] in SUPPORTED_IMAGE_FILE_TYPES
+    
+    return processed
+
 def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter, quality, frame_shape):
     """Trigger scheduled_video_capture to create a continuous cache of clips"""
-    #Create settings for scheduled_video_capture
-    #add task_id to the cache path
-    cache_dir = os.path.join(RECORDINGS_CACHE_DIR, task_id)
+    #Create settings for scheduled_video_capture with root_path as object
+    cache_dir = {
+        "path": RECORDINGS_CACHE_DIR, 
+        "id": task_id
+    }
+    
     lead_settings = {
         "root_path": cache_dir,
         "file_type": "mp4",
@@ -339,21 +394,17 @@ def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter
 
 def setup_event_recording(camera_id, task_uuid, recording_lead_time, clip_length, adapter, task_id, quality, frame_shape):
     """Set up event recording for a camera"""
-    #Path to recordings cache for this camera
-    cache_base_path = os.path.join(RECORDINGS_CACHE_DIR, task_id, SYSTEM_KEY, camera_id, 'scheduled_video_capture')
+    #incoming task_uuid should end with '_annotated'
+    cache_base_path = os.path.join(RECORDINGS_CACHE_DIR, SYSTEM_KEY, task_id, "outbox", camera_id, 'scheduled_video_capture', task_uuid)
    
-    #Set up temporary directory for assembling videos if it doesn't exist
-    setup_temp_dir(camera_id, task_id)
+    setup_temp_dir(camera_id, task_id, task_uuid.split('_annotated')[0])
    
-    #Clean up old cache files to save space (keep the most recent ones)
     clean_cache(cache_base_path)
    
-    #Scheduled recording interval
     interval = max(recording_lead_time, min(clip_length, 5))
     if recording_lead_time == 0:
         interval = min(max(clip_length//2, 5), 300)
         
-    #Trigger scheduled recording if needed
     trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter, quality, frame_shape)
    
     return cache_base_path
@@ -368,6 +419,7 @@ def handle_event_recording(
     root_path,
     file_type,
     task_id,
+    task_uuid,
     task_output_data=None
 ):
     """Handle event recording logic with clear state transitions
@@ -380,7 +432,7 @@ def handle_event_recording(
         clip_length: Total clip length in seconds
         cache_base_path: Path to the cache directory
         temp_dir: Temporary directory for assembling videos
-        root_path: Root path for saved videos
+        root_path: Root path object with path and id properties
         file_type: Video file type (mp4 or avi)
         task_id: Task identifier
         task_output_data: Dictionary to update with output path
@@ -389,24 +441,12 @@ def handle_event_recording(
         updated_capture_time: Updated last_event_time value
     """
     current_time = time.time()
-       
-    #Validate and normalize root path
-    if root_path.startswith('/'):
-        #This is already an absolute path, use it directly
-        pass
-    elif root_path.startswith('./'):
-        #This is a relative path with dot prefix, remove the dot
-        root_path = root_path[2:]
     
-    if not os.path.isabs(root_path):
-        #Convert to absolute path relative to BASE_DIR
-        root_path = os.path.abspath(os.path.join(BASE_DIR, root_path))
-    
-    #Create output path with validated root path
-    output_path = create_video_path(camera_id, task_id, root_path, file_type)
+    #Create output path based on root_path object
+    output_path = create_video_path(camera_id, task_id, task_uuid, root_path, file_type)
        
     #Path to temporary recordings for this camera/task
-    temp_dir_path = os.path.join(TEMP_DIR, SYSTEM_KEY, camera_id, task_id)
+    temp_dir_path = os.path.join(TEMP_DIR, SYSTEM_KEY, camera_id, task_id, f"{task_uuid}")
     ensure_dir_exists(temp_dir_path)
    
     #Get existing videos in temp directory
@@ -478,20 +518,16 @@ def handle_event_recording(
             #Make sure we have some videos to work with
             if len(temp_videos) == 0:
                 return last_event_time
-           
-            #Create output path
-            output_path = create_video_path(camera_id, task_id, root_path, file_type)
-           
+                      
             #Start trimming recording_lead_time seconds before the event
             trim_start_time = last_event_time - recording_lead_time
            
-            #Combine and trim videos
             result = combine_and_trim_video(temp_videos, output_path, trim_start_time, clip_length)
            
             if result:               
                 #Update output data
                 if task_output_data is not None:
-                    task_output_data["saved_video_path"] = output_path
+                    task_output_data["saved_path"] = output_path
                
                 #Clean up temp directory
                 clear_directory(temp_dir_path)

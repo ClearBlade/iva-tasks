@@ -108,23 +108,31 @@ def get_distance_between_objects(obj1, obj2):
     vDistance = abs(centroid1[1] - centroid2[1])
     return (hDistance**2 + vDistance**2)**0.5
 
-def get_model_and_tracker(camera_id, class_assignments, enable_tracking):
+def get_model_and_tracker(camera_id, task_uuid, class_assignments, enable_tracking):
     #if at least one object has enable_tracking set to True, then all objects will be tracked, we will only display the tracking data for those with it enabled
+    
     if enable_tracking:
         if camera_id not in models:
-            models[camera_id] = YOLO("assets/yolo12s.onnx", task='detect')
-            id_trackers[camera_id] = IDTracker(class_assignments.keys())
-        return models[camera_id], id_trackers[camera_id]
+            models[camera_id] = {}
+            id_trackers[camera_id] = {}
+        if task_uuid not in models[camera_id]:
+            models[camera_id][task_uuid] = YOLO("assets/yolo12s.onnx", task='detect')
+            id_trackers[camera_id][task_uuid] = IDTracker(class_assignments.keys())
+        return models[camera_id][task_uuid], id_trackers[camera_id][task_uuid]
     else:
         if camera_id not in models:
-            models[camera_id] = YOLO("assets/yolo12s.onnx", task='detect')
-        return models[camera_id], None
+            models[camera_id] = {}
+        if task_uuid not in models[camera_id]:
+            models[camera_id][task_uuid] = YOLO("assets/yolo12s.onnx", task='detect')
+        return models[camera_id][task_uuid], None
 
-def get_colors(camera_id, class_assignments, frame, frame_shape):
+def get_colors(camera_id, task_uuid, class_assignments, frame, frame_shape):
     if camera_id not in colors:
+        colors[camera_id] = {}
+    if task_uuid not in colors[camera_id]:
         box_coords = (0, 0, frame_shape[1], frame_shape[0])
-        colors[camera_id] = choose_colors(frame, box_coords, class_assignments)
-    return colors[camera_id]
+        colors[camera_id][task_uuid] = choose_colors(frame, box_coords, class_assignments)
+    return colors[camera_id][task_uuid]
 
 def get_average_color(image, box_coordinates):
     x, y, w, h = box_coordinates
@@ -338,7 +346,7 @@ def get_face_box(bbox):
         face_box = x1, max(y1, y2), x2, high_point - (width // 3)
     return face_box
 
-def blur_person_faces(bboxes, frame, blur_and_tracking, blur_tracking_info, camera_id):
+def blur_person_faces(bboxes, frame, blur_and_tracking, blur_tracking_info, camera_id, task_uuid):
     face_boxes = []
     for label, bbox in bboxes.items():
         if label.startswith("person"):
@@ -349,18 +357,20 @@ def blur_person_faces(bboxes, frame, blur_and_tracking, blur_tracking_info, came
                 face_box = get_face_box(bbox)
                 face_boxes.append(face_box)
                 blur_tracking_info[label] = TrackingInfo(label, face_box, 0)
-    #if person is being tracked as well, we maintain the blur for 1 frame after disappearance to avoid flicker
+    
     if "person" in blur_and_tracking:
         if camera_id not in id_trackers["blur"]:
             id_trackers["blur"][camera_id] = {}
-        for label in list(id_trackers["blur"][camera_id].keys()):
+        if task_uuid not in id_trackers["blur"][camera_id]:
+            id_trackers["blur"][camera_id][task_uuid] = {}
+        for label in list(id_trackers["blur"][camera_id][task_uuid].keys()):
             if label not in blur_tracking_info.keys():
-                face_boxes.append(id_trackers["blur"][camera_id][label].bbox)
-                del id_trackers["blur"][camera_id][label]
-        id_trackers["blur"][camera_id] = blur_tracking_info
+                face_boxes.append(id_trackers["blur"][camera_id][task_uuid][label].bbox)
+                del id_trackers["blur"][camera_id][task_uuid][label]
+        id_trackers["blur"][camera_id][task_uuid] = blur_tracking_info
     return apply_blur(frame, face_boxes)
 
-def blur_objects(needs_blur, blur_enabled_objects, tracking_enabled_objects, objects_detected, bboxes, camera_id, input_frame):
+def blur_objects(needs_blur, blur_enabled_objects, tracking_enabled_objects, objects_detected, bboxes, camera_id, task_uuid, input_frame):
     if not needs_blur:
         return input_frame.copy()
     blurred_frame = input_frame.copy()
@@ -371,9 +381,7 @@ def blur_objects(needs_blur, blur_enabled_objects, tracking_enabled_objects, obj
         blur_tracking_info = {}
     for object_cls in (set(blur_enabled_objects) & set(objects_detected)):
         if object_cls == "person":
-            blurred_frame = blur_person_faces(bboxes, blurred_frame, blur_and_tracking, blur_tracking_info, camera_id)
-        #elif object_cls == "other_class":
-            #only person is supported for now
+            blurred_frame = blur_person_faces(bboxes, blurred_frame, blur_and_tracking, blur_tracking_info, camera_id, task_uuid)
         else:
             continue
     return blurred_frame
@@ -403,7 +411,9 @@ def detect_objects(camera_id, task_settings, input_frame, frame_shape, roi=None)
         input_frame = input_frame[roi[1]:roi[3], roi[0]:roi[2]]
     objects_settings = task_settings.get("objects_to_detect")
     objects = list(objects_settings.keys())
+    task_uuid = task_settings.get("task_uuid", "default")
     #annotated_objects holds all members of objects where their object_settings[show_boxes] or object_settings[show_labels] is True
+
     annotated_objects = [obj for obj in objects if objects_settings[obj].get("show_boxes", False) or objects_settings[obj].get("show_labels", False)]
     blur_enabled_objects = [obj for obj in objects if objects_settings[obj].get("enable_blur", False)]
     tracking_enabled_objects = [obj for obj in objects if objects_settings[obj].get("enable_tracking", False)]
@@ -412,21 +422,22 @@ def detect_objects(camera_id, task_settings, input_frame, frame_shape, roi=None)
     
     enable_tracking = any(objects_settings[obj].get("enable_tracking", False) for obj in objects_settings)
     #needs_blur is true if both objects has any supported_blur_classes and if for any of the supported_blur_classes in objects_settings, enable_blur is True
+
     needs_blur = any(obj in blur_enabled_objects for obj in supported_blur_classes)
     
-    model, id_tracker = get_model_and_tracker(camera_id, class_assignments, enable_tracking)    
+    model, id_tracker = get_model_and_tracker(camera_id, task_uuid, class_assignments, enable_tracking)    
     if enable_tracking:
         results = model.track(input_frame, persist=True, verbose=False)
     else:
         results = model(input_frame, verbose=False)
 
-    colorPalette = get_colors(camera_id, annotated_objects, input_frame, frame_shape)
+    colorPalette = get_colors(camera_id, task_uuid, annotated_objects, input_frame, frame_shape)
     
     detections, bboxes, objects_detected, confidence_scores = get_detections(results, class_assignments, objects_settings)
     
     bboxes, confidence_scores = update_tracker(objects_settings, id_tracker, detections, bboxes, confidence_scores)
     
-    blurred_frame = blur_objects(needs_blur, blur_enabled_objects, tracking_enabled_objects, objects_detected, bboxes, camera_id, input_frame) #if blur_faces is False, this function will return the input_frame as is
+    blurred_frame = blur_objects(needs_blur, blur_enabled_objects, tracking_enabled_objects, objects_detected, bboxes, camera_id, task_uuid, input_frame)
     result_image = draw_annotations_and_overlay(blurred_frame, bboxes, colorPalette, objects_settings, confidence_scores)
 
     return result_image, bboxes, list(objects_detected), get_total_objects(bboxes)
@@ -454,7 +465,7 @@ if __name__ == '__main__':
         os.environ['CB_SYSTEM_KEY'] = "test_system_key"
         
         #Test video path - update this path to your test video
-        video_path = os.path.abspath('/your/path/to/test_video.mp4')
+        video_path = os.path.abspath('/Users/Drew5/Desktop/DEV/IVATesting2/new-iva-adapter/new-iva-adapter/tests/worker-zone-detection.mp4')
         
         #Open the test video
         cap = cv2.VideoCapture(video_path)

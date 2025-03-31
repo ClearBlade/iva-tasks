@@ -35,7 +35,10 @@
             "retrigger_delay": 3,                           // {integer} Minimum time between saved snapshots
             "clip_length_units": "Seconds",                 // {string} Units of clip_length value. Accepts ["Seconds", "Minutes", "Hours", "Days"]. Defaults to "Seconds"
             "retrigger_delay_units": "Minutes",             // {string} Units of retrigger_delay value
-            "root_path": "/your/path/here",                 // {string} Path of where video or snapshot is to be stored
+            "root_path": {
+                "id": "your-bucket-set-name",               // {string} Name of your bucket set or parent task id
+                "path": "/tmp/clearblade_platform_buckets"  // {string} The local root directory specified by your bucket set or target directory
+            },
             "resolution": "Original"                        // {string} Desired resolution of the video ["Original", "Lower", "Lowest"]
         }
         "object_detection_output": {                        // key = object class & value = bounded boxes 

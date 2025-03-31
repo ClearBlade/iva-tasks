@@ -19,9 +19,14 @@ last_capture_time = {}
 def handle_sigterm(signum, frame):
     global existing_mem
     print("\n[Reader] SIGTERM received. Cleaning up shared and temp memory...")          
-    if existing_mem:
+    if 'existing_mem' in globals() and existing_mem:
         existing_mem.close()  #Close but DO NOT unlink
-    clear_recordings(TASK_ID)
+    #Clean up all task-related recordings
+    for cam_task_key in last_capture_time.keys():
+        if '_' in cam_task_key:
+            camera_id, task_uuid = cam_task_key.split('_', 1)
+            clear_recordings(TASK_ID, camera_id, task_uuid)
+    
     sys.exit(0)
 
 def on_message(message):
@@ -30,6 +35,7 @@ def on_message(message):
     camera_id = data.get('camera_id')
     task_uuid = data.get('uuid')
     task_settings = data.get('task_settings', {})
+    task_settings["task_uuid"] = task_uuid  #Add task_uuid to settings for use in detect_objects
     frame_shape = data.get('frame_shape')
     try:
         existing_mem = shm.SharedMemory(name=f'{task_uuid}_frame')
@@ -41,10 +47,8 @@ def on_message(message):
         if not image.any():
             print(f"Error: Image from shared memory is empty")
             return
-        
         #Process the copied image
         image_with_bboxes, bboxes, objects_detected, total_objects = detect_objects(camera_id, task_settings, image_copy, frame_shape)
-        
         #Write back to shared memory
         existing_mem.buf[:image_with_bboxes.nbytes] = image_with_bboxes.tobytes()
     except Exception as e:
@@ -57,89 +61,90 @@ def on_message(message):
     data[f"{TASK_ID}_output"] = {
         "bboxes": bboxes,
         "objects_detected": objects_detected,
-        "total_objects_detected": total_objects
+        "total_objects_detected": total_objects,
+        "saved_path": None
     }
-    if data.get('task_id', TASK_ID) == TASK_ID: #to make sure the needs_video is meant for this task
-        from recording_utils import LastCaptureTime, TIME_UNITS, SUPPORTED_IMAGE_FILE_TYPES
+    
+    if data.get('task_id', TASK_ID) == TASK_ID:
+        from recording_utils import LastCaptureTime, process_task_settings, handle_snapshot_recording
+        
         event = (len(objects_detected) > 0 and total_objects > 0)
-        root_path = task_settings.get('root_path', {'id': 'default_id', 'path': './assets/videos'})
-        file_type = task_settings.get('file_type', '').lower()
-        needs_video = False
-        needs_snapshot = False
-        clip_length = int(task_settings.get('clip_length', 0) * TIME_UNITS.get(task_settings.get('clip_length_units', 'Seconds'), 1))
-        if clip_length > 0:
-            needs_video = True
-        elif file_type in SUPPORTED_IMAGE_FILE_TYPES:
-            needs_snapshot = True
-        elif file_type != '':
-            print(f'Unsupported file type: {file_type}')
-        if needs_video:
-            scheduled_video_uuid = task_uuid + '_annotated'
-            #Import necessary utilities if not already imported
+        
+        settings = process_task_settings(task_settings)
+        
+        capture_key = f"{camera_id}_{task_uuid}"
+        if capture_key not in last_capture_time:
+            last_capture_time[capture_key] = LastCaptureTime()
+            last_capture_time[capture_key].last_video_capture = time.time() - settings['clip_length']
+            clear_recordings(TASK_ID, camera_id, task_uuid)
+        
+        if settings['needs_video']:
+            annotated_uuid = f"{task_uuid}_annotated"
+            
             from recording_utils import (
                 setup_event_recording, handle_event_recording, add_to_shared_memory
             )
-            add_to_shared_memory(scheduled_video_uuid, image_with_bboxes)
-            recording_lead_time = int(task_settings.get('recording_lead_time', 5))
-        
-            #Initialize last_capture_time if not already set and clear recordings if needed
-            if camera_id not in last_capture_time:
-                last_capture_time[camera_id] = LastCaptureTime()
-                last_capture_time[camera_id].last_video_capture = time.time() - clip_length
-                clear_recordings(TASK_ID, camera_id)
-        
-            file_type = 'mp4'
-        
-            #Setup event recording (initializes cache and temp directories if needed)
+            
+            #Save the annotated image to shared memory
+            add_to_shared_memory(annotated_uuid, image_with_bboxes)
+            
             cache_base_path = setup_event_recording(
                 camera_id,
-                scheduled_video_uuid,
-                recording_lead_time,
-                clip_length,
+                annotated_uuid,
+                settings['recording_lead_time'],
+                settings['clip_length'],
                 adapter,
                 TASK_ID,
-                task_settings.get("resolution", "Low"),
+                settings['resolution'],
                 frame_shape
             )
-        
-            #Handle the event recording logic
-            last_capture_time[camera_id].last_video_capture = handle_event_recording(
+            
+            last_capture_time[capture_key].last_video_capture = handle_event_recording(
                 camera_id,
                 event,
-                last_capture_time[camera_id].last_video_capture,
-                recording_lead_time,
-                clip_length,
+                last_capture_time[capture_key].last_video_capture,
+                settings['recording_lead_time'],
+                settings['clip_length'],
                 cache_base_path,
-                root_path,
-                file_type,
+                settings['root_path'],
+                'mp4',
                 TASK_ID,
-                data[f"{TASK_ID}_output"]  #To update with the saved_video_path
+                task_uuid,  #Use original task_uuid for saving the output
+                data[f"{TASK_ID}_output"]
             )
-        elif needs_snapshot:
-            retrigger_delay = int(task_settings.get('retrigger_delay', 15) * TIME_UNITS.get(task_settings.get('retrigger_delay_units', 'Seconds'), 1))
-            if camera_id not in last_capture_time:
-                last_capture_time[camera_id] = LastCaptureTime()
-                last_capture_time[camera_id].last_snapshot = time.time()-retrigger_delay
-            if (len(objects_detected) > 0 and total_objects > 0) and (time.time() - last_capture_time[camera_id].last_snapshot >= retrigger_delay):
-                last_capture_time[camera_id].last_snapshot = time.time()
-                timestamp = time.strftime('%Y-%m-%d_%H.%M.%S')
-                subfolder = timestamp.split('_')[0]
-                subfolder = timestamp.split('_')[0]
-                system_key = os.environ.get('CB_SYSTEM_KEY', 'default_system')
-                if not os.path.exists(f'{root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}'):
-                    os.makedirs(f'{root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}')
-                file_type = task_settings.get('file_type', 'png').lower()
-                if file_type not in SUPPORTED_IMAGE_FILE_TYPES:
-                    file_type = 'png'
-                cv2.imwrite(f'{root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}', image_with_bboxes)
-                print(f'snapshot saved to {root_path['path']}/{system_key}/{root_path['id']}/outbox/{camera_id}/{TASK_ID}/{subfolder}/{timestamp}.{file_type}')
+                        
+        elif settings['needs_snapshot']:
+            if not hasattr(last_capture_time[capture_key], 'last_snapshot'):
+                last_capture_time[capture_key].last_snapshot = time.time() - settings['retrigger_delay']
+                
+            last_capture_time[capture_key].last_snapshot, saved_path = handle_snapshot_recording(
+                camera_id,
+                event,
+                last_capture_time[capture_key].last_snapshot,
+                settings['retrigger_delay'],
+                settings['root_path'],
+                settings['file_type'],
+                TASK_ID,
+                task_uuid
+            )
+            
+            if saved_path:
+                cv2.imwrite(saved_path, image_with_bboxes)
+                print(f'snapshot saved to {saved_path}')
+                data[f"{TASK_ID}_output"]["saved_path"] = saved_path
+                
+        elif settings['file_type'] != '':
+            print(f'Unsupported file type: {settings["file_type"]}')
+            
     publish_path = data.get('publish_path')
     if len(publish_path) > 1:
         publish_path.remove(INPUT_TOPIC)
         adapter.publish(publish_path[0], json.dumps(data))
     else:
+        print('publishing to output topic', f'task/{TASK_ID}/output/{camera_id}')
         output_topic = f'task/{TASK_ID}/output/{camera_id}'
         adapter.publish(output_topic, json.dumps(data))
+        print('published message')
         
 signal.signal(signal.SIGTERM, handle_sigterm)
 
