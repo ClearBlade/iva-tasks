@@ -103,7 +103,7 @@ class VideoCaptureSessions:
             #Create save path
             system_key = os.environ.get('CB_SYSTEM_KEY', 'default_system')
             
-            save_path = os.path.join(root_path['path'], system_key, root_path['id'], 'outbox', camera_id, task_id, date_str)
+            save_path = os.path.join(root_path['path'], system_key, root_path['id'], 'outbox', camera_id, task_id, task_uuid, date_str)
                 
             os.makedirs(save_path, exist_ok=True)
         

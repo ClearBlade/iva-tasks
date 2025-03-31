@@ -44,7 +44,7 @@ def on_message(message):
 
     print('frame read from shared mem')
     
-    path = save_frame(frame, camera_id, task_settings, TASK_ID)    
+    path = save_frame(frame, camera_id, task_settings, TASK_ID, task_uuid)    
 
     existing_mem.close()
     

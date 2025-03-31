@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import cv2
 import dateutil.parser as parser
 
-# Save path will be /tmp/clearblade_platform_buckets/<system_key>/<camera_id>/<date>/<time>.jpg
+# Save path will be /tmp/clearblade_platform_buckets/<system_key>/<root_path['id']>/outbox/<camera_id>/<task_id>/<task_uuid>/<sub_folder>/<timestamp>.<file_type>"
 
 last_saved_times = {}  # Global variable to track last saved second
 
@@ -41,19 +41,19 @@ def check_interval(camera_id, interval, start_time):
     
     return "", ""
 
-def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str, sub_folder:str, name: str, task_id: str):
+def save(root_path: str, frame, camera_id: str, resolution: str, file_type: str, sub_folder:str, name: str, task_id: str, task_uuid: str):
 
     frame = cv2.resize(frame, (0, 0), fx=get_quality_perc(resolution)/100, fy=get_quality_perc(resolution)/100, interpolation=cv2.INTER_AREA)
 
     system_key = os.environ['CB_SYSTEM_KEY']
-    save_path = os.path.join(root_path['path'], system_key, root_path['id'], 'outbox', camera_id, task_id, sub_folder)
+    save_path = os.path.join(root_path['path'], system_key, root_path['id'], 'outbox', camera_id, task_id, task_uuid, sub_folder)
     os.makedirs(save_path, exist_ok=True)
         
     file_path = os.path.join(save_path, f"{name}.{file_type.lower()}")
     cv2.imwrite(file_path, frame)
     return file_path
 
-def save_frame(frame, camera_id, task_settings, task_id):
+def save_frame(frame, camera_id, task_settings, task_id, task_uuid):
     root_path = task_settings.get("root_path", {"id": "default_id", "path": "./assets/videos"})
     file_type = task_settings.get("file_type", "JPG")
     resolution = task_settings.get("resolution", "Low")
@@ -64,7 +64,7 @@ def save_frame(frame, camera_id, task_settings, task_id):
     interval_secs = get_time_in_seconds(interval, units)
     sub_folder, name = check_interval(camera_id, interval_secs, start_time)
     if sub_folder and name:
-        return save(root_path, frame, camera_id, resolution, file_type, sub_folder, name, task_id)
+        return save(root_path, frame, camera_id, resolution, file_type, sub_folder, name, task_id, task_uuid)
     
     return ""
 
@@ -84,7 +84,9 @@ if __name__ == '__main__':
             "interval": "5",
             "units": "Seconds",
             "start_time": "2025-02-25T15:31:05.423Z",
-        }, "scheduled_snapshot")
+        }, "scheduled_snapshot",
+            "testSnapshotTask"
+        )
         
         if path:
             print('saved image at:', path)
