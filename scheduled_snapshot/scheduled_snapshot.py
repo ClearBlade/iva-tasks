@@ -9,9 +9,9 @@ import dateutil.parser as parser
 last_saved_times = {}  # Global variable to track last saved second
 
 def get_quality_perc(resolution):
-    if resolution == 'High':
+    if resolution == 'Original':
         return 100
-    elif resolution == 'Medium':
+    elif resolution == 'Lower':
         return 75
     return 50
 
@@ -80,7 +80,7 @@ if __name__ == '__main__':
         path = save_frame(frame, camera_id, {
             "root_path": {"id": "test_bucket_set_id", "path": "./assets/images"},
             "file_type": "PNG",
-            "resolution": 'High',
+            "resolution": 'Original',
             "interval": "5",
             "units": "Seconds",
             "start_time": "2025-02-25T15:31:05.423Z",

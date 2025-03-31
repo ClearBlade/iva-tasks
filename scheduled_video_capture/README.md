@@ -9,7 +9,10 @@
         "task_id": "scheduled_video_capture",               // (string) Task ID
         "camera_id": "Hikvision101",                        // (string) Camera ID
         "task_settings": {  
-            "root_path": "/tmp/clearblade_platform_buckets/",   // (string) root path to store video
+            "root_path": {
+                "id": "google-bucket-set",               // {string} Name of your bucket set
+                "path": "/tmp/clearblade_platform_buckets"  // {string} The edge root directory specified by your bucket set
+            },
             "file_type": "mp4",                                 // (string) File type ["mp4", "avi"]
             "resolution": "Original",                           // (string) Video Quality - Original, Lower, Lowest
             "interval": 600,                                    // (number) Interval between video start times
