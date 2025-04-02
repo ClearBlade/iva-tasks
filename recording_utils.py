@@ -313,6 +313,14 @@ def find_videos_for_time_range(videos, start_time, end_time, video_length):
    
     return sorted(relevant_videos, key=lambda x: timestamp_from_filename(x))
 
+def get_quality_perc(resolution):
+    res = resolution.lower()
+    if res == 'original':
+        return 100
+    elif res == 'lower':
+        return 75
+    return 50
+
 def handle_snapshot_recording(camera_id, event, last_snapshot_time, retrigger_delay, root_path, file_type, task_id, task_uuid):
     current_time = time.time()
     saved_path = None
@@ -337,6 +345,12 @@ def handle_snapshot_recording(camera_id, event, last_snapshot_time, retrigger_de
         
     return last_snapshot_time, None
 
+def adjust_resolution(frame, quality):
+    resolution = get_quality_perc(quality)
+    if resolution == 100:
+        return frame
+    return cv2.resize(frame, (0, 0), fx=resolution/100, fy=resolution/100, interpolation=cv2.INTER_AREA)
+
 def process_task_settings(task_settings):
     processed = {}
     
@@ -352,13 +366,12 @@ def process_task_settings(task_settings):
     retrigger_delay_units = task_settings.get('retrigger_delay_units', 'Seconds')
     processed['retrigger_delay'] = retrigger_delay * TIME_UNITS.get(retrigger_delay_units, 1)
     
-    processed['recording_lead_time'] = int(task_settings.get('recording_lead_time', 10))
+    processed['recording_lead_time'] = int(task_settings.get('recording_lead_time', 10) * TIME_UNITS.get(task_settings.get('recording_lead_time_units', 'Seconds'), 1))
     
-    processed['resolution'] = task_settings.get('resolution', 'Low')
+    processed['resolution'] = task_settings.get('resolution', 'Lowest')
     
     processed['needs_video'] = processed['clip_length'] > 0
     processed['needs_snapshot'] = not processed['needs_video'] and processed['file_type'] in SUPPORTED_IMAGE_FILE_TYPES
-    
     return processed
 
 def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter, quality, frame_shape):

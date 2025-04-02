@@ -66,7 +66,7 @@ def on_message(message):
     }
     
     if data.get('task_id', TASK_ID) == TASK_ID:
-        from recording_utils import LastCaptureTime, process_task_settings, handle_snapshot_recording
+        from recording_utils import LastCaptureTime, process_task_settings, handle_snapshot_recording, adjust_resolution
         
         event = (len(objects_detected) > 0 and total_objects > 0)
         
@@ -129,7 +129,7 @@ def on_message(message):
             )
             
             if saved_path:
-                cv2.imwrite(saved_path, image_with_bboxes)
+                cv2.imwrite(saved_path, adjust_resolution(image_with_bboxes, settings['resolution']))
                 print(f'snapshot saved to {saved_path}')
                 data[f"{TASK_ID}_output"]["saved_path"] = saved_path
                 
