@@ -35,7 +35,7 @@ def on_message(message):
     camera_id = data.get('camera_id')
     task_uuid = data.get('uuid')
     task_settings = data.get('task_settings', {})
-    task_settings["task_uuid"] = task_uuid  #Add task_uuid to settings for use in detect_objects
+    task_settings["task_uuid"] = task_uuid  # Add task_uuid to settings for use in detect_objects
     frame_shape = data.get('frame_shape')
     try:
         existing_mem = shm.SharedMemory(name=f'{task_uuid}_frame')
@@ -76,7 +76,7 @@ def on_message(message):
         if capture_key not in last_capture_time:
             last_capture_time[capture_key] = LastCaptureTime()
             last_capture_time[capture_key].last_video_capture = time.time() - settings['clip_length']
-            clear_recordings(TASK_ID, camera_id, task_uuid)
+            clear_recordings(TASK_ID, task_uuid, camera_id)
         
         if settings['needs_video']:
             annotated_uuid = f"{task_uuid}_annotated"
@@ -114,7 +114,7 @@ def on_message(message):
             )
                         
         elif settings['needs_snapshot']:
-            if not hasattr(last_capture_time[capture_key], 'last_snapshot'):
+            if not hasattr(last_capture_time[capture_key], 'last_snapshot') or last_capture_time[capture_key].last_snapshot is None:
                 last_capture_time[capture_key].last_snapshot = time.time() - settings['retrigger_delay']
                 
             last_capture_time[capture_key].last_snapshot, saved_path = handle_snapshot_recording(

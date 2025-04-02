@@ -35,6 +35,7 @@ def on_message(message):
     camera_id = data.get('camera_id')
     task_settings = data.get('task_settings', {})
     task_uuid = data.get('uuid')
+    capture_key = f"{camera_id}_{task_uuid}"
     objects = task_settings.get('objects_to_detect', [])
     objects_to_detect = [obj for obj, settings in objects.items() if settings.get('enable_tracking', False)]
     x1, y1, x2, y2 = task_settings.get('line')
@@ -51,8 +52,8 @@ def on_message(message):
         drawn_frame = np.ndarray(frame_shape, dtype=np.uint8, buffer=existing_mem.buf)
         drawn_frame_copy = drawn_frame.copy()
         
-        if camera_id not in camera_trackers:
-            camera_trackers[camera_id] = CameraTracker(drawn_frame_copy, frame_shape, line)
+        if capture_key not in camera_trackers:
+            camera_trackers[capture_key] = CameraTracker(drawn_frame_copy, frame_shape, line)
             
         detection_output = data.get('object_detection_output', {})
         direction = task_settings.get('direction', None)
@@ -63,9 +64,9 @@ def on_message(message):
         if direction not in [DIRECTION_A_TO_B, DIRECTION_B_TO_A]:
             direction = None
             
-        camera_trackers[camera_id].update(box_data, line)
-        results = camera_trackers[camera_id].process_crossings(objects_to_detect, direction)
-        drawn_frame_with_line = camera_trackers[camera_id].draw_line(drawn_frame_copy)
+        camera_trackers[capture_key].update(box_data, line)
+        results = camera_trackers[capture_key].process_crossings(objects_to_detect, direction)
+        drawn_frame_with_line = camera_trackers[capture_key].draw_line(drawn_frame_copy)
         
         outputs = data.get('publish_path', [f'task/{TASK_ID}/output/{camera_id}'])
         if len(outputs) > 1:
@@ -110,10 +111,10 @@ def on_message(message):
         
         settings = process_task_settings(task_settings)
         
-        if camera_id not in last_capture_time:
-            last_capture_time[camera_id] = LastCaptureTime()
-            last_capture_time[camera_id].last_video_capture = time.time() - settings['clip_length']
-            clear_recordings(TASK_ID, camera_id)
+        if capture_key not in last_capture_time:
+            last_capture_time[capture_key] = LastCaptureTime()
+            last_capture_time[capture_key].last_video_capture = time.time() - settings['clip_length']
+            clear_recordings(TASK_ID, task_uuid, camera_id)
         
         if settings['needs_video']:
             scheduled_video_uuid = task_uuid + '_annotated'
@@ -135,10 +136,10 @@ def on_message(message):
                 frame_shape
             )
             
-            last_capture_time[camera_id].last_video_capture = handle_event_recording(
+            last_capture_time[capture_key].last_video_capture = handle_event_recording(
                 camera_id,
                 event,
-                last_capture_time[camera_id].last_video_capture,
+                last_capture_time[capture_key].last_video_capture,
                 settings['recording_lead_time'],
                 settings['clip_length'],
                 cache_base_path,
@@ -150,13 +151,13 @@ def on_message(message):
             )
             
         elif settings['needs_snapshot']:
-            if not hasattr(last_capture_time[camera_id], 'last_snapshot'):
-                last_capture_time[camera_id].last_snapshot = time.time() - settings['retrigger_delay']
+            if not hasattr(last_capture_time[capture_key], 'last_snapshot') or last_capture_time[capture_key].last_snapshot is None:
+                last_capture_time[capture_key].last_snapshot = time.time() - settings['retrigger_delay']
                 
-            last_capture_time[camera_id].last_snapshot, saved_path = handle_snapshot_recording(
+            last_capture_time[capture_key].last_snapshot, saved_path = handle_snapshot_recording(
                 camera_id,
                 event,
-                last_capture_time[camera_id].last_snapshot,
+                last_capture_time[capture_key].last_snapshot,
                 settings['retrigger_delay'],
                 settings['root_path'],
                 settings['file_type'],
@@ -173,6 +174,8 @@ def on_message(message):
             print(f'Unsupported file type: {settings["file_type"]}')
         
     adapter.publish(output_topic, json.dumps(data))
+    
+signal.signal(signal.SIGTERM, handle_sigterm)
 
 if __name__ == '__main__':
     load_dotenv(dotenv_path='../../.env')
