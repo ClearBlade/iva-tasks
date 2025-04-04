@@ -1,16 +1,21 @@
 import json
 import os
-import time
-from clearblade_mqtt_library import AdapterLibrary
-from dotenv import load_dotenv
-from multiprocessing import shared_memory as shm
-import numpy as np
 import signal
 import sys
+import time
+from multiprocessing import shared_memory as shm
+
 import cv2
+import numpy as np
+from dotenv import load_dotenv
+
+from clearblade_mqtt_library import AdapterLibrary
 from object_detection import detect_objects
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from clearblade_mqtt_library import AdapterLibrary
 from recording_utils import clear_recordings
+
 TASK_ID = 'object_detection'
 INPUT_TOPIC = f'task/{TASK_ID}/input'
 
@@ -69,7 +74,9 @@ def on_message(message):
     }
     
     if data.get('task_id', TASK_ID) == TASK_ID:
-        from recording_utils import LastCaptureTime, process_task_settings, handle_snapshot_recording, adjust_resolution
+        from recording_utils import (LastCaptureTime, adjust_resolution,
+                                     handle_snapshot_recording,
+                                     process_task_settings)
         
         event = (len(objects_detected) > 0 and total_objects > 0)
         
@@ -84,10 +91,10 @@ def on_message(message):
         if settings['needs_video']:
             annotated_uuid = f"{task_uuid}_annotated"
             
-            from recording_utils import (
-                setup_event_recording, handle_event_recording, add_to_shared_memory
-            )
-            
+            from recording_utils import (add_to_shared_memory,
+                                         handle_event_recording,
+                                         setup_event_recording)
+
             #Save the annotated image to shared memory
             add_to_shared_memory(annotated_uuid, image_with_bboxes)
             

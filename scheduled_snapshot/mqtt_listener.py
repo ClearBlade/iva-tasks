@@ -6,10 +6,12 @@ import time
 from multiprocessing import shared_memory as shm
 
 import numpy as np
-from clearblade_mqtt_library import AdapterLibrary
 from dotenv import load_dotenv
 
 from scheduled_snapshot import save_frame
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from clearblade_mqtt_library import AdapterLibrary
 
 TASK_ID = 'scheduled_snapshot'
 existing_mem = None # Global variable for shared memory

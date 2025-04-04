@@ -1,17 +1,20 @@
 import json
-import time
-import cv2
-import numpy as np
-from multiprocessing import shared_memory as shm
-import numpy as np
+import os
 import signal
 import sys
+import time
+from multiprocessing import shared_memory as shm
+
+import cv2
+import numpy as np
+from dotenv import load_dotenv
 
 from clearblade_mqtt_library import AdapterLibrary
-from dotenv import load_dotenv
-from line_crossing import rescale_line, CameraTracker, DIRECTION_A_TO_B, DIRECTION_B_TO_A, UI_SCALE
-import os
+from line_crossing import (DIRECTION_A_TO_B, DIRECTION_B_TO_A, UI_SCALE,
+                           CameraTracker, rescale_line)
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from clearblade_mqtt_library import AdapterLibrary
 from recording_utils import clear_recordings
 
 TASK_ID = 'line_crossing'
@@ -116,7 +119,9 @@ def on_message(message):
             existing_mem.close()
     
     if data.get('task_id', TASK_ID) == TASK_ID:
-        from recording_utils import LastCaptureTime, process_task_settings, handle_snapshot_recording, adjust_resolution
+        from recording_utils import (LastCaptureTime, adjust_resolution,
+                                     handle_snapshot_recording,
+                                     process_task_settings)
         
         settings = process_task_settings(task_settings)
         
@@ -128,9 +133,9 @@ def on_message(message):
         if settings['needs_video']:
             scheduled_video_uuid = task_uuid + '_annotated'
             
-            from recording_utils import (
-                setup_event_recording, handle_event_recording, add_to_shared_memory
-            )
+            from recording_utils import (add_to_shared_memory,
+                                         handle_event_recording,
+                                         setup_event_recording)
             
             add_to_shared_memory(scheduled_video_uuid, drawn_frame_with_line)
             
