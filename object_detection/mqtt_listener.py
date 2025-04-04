@@ -17,17 +17,20 @@ INPUT_TOPIC = f'task/{TASK_ID}/input'
 last_capture_time = {}
 
 def handle_sigterm(signum, frame):
-    global existing_mem
-    print("\n[Reader] SIGTERM received. Cleaning up shared and temp memory...")          
-    if 'existing_mem' in globals() and existing_mem:
-        existing_mem.close()  #Close but DO NOT unlink
-    #Clean up all task-related recordings
-    for cam_task_key in last_capture_time.keys():
-        if '_' in cam_task_key:
-            camera_id, task_uuid = cam_task_key.split('_', 1)
-            clear_recordings(TASK_ID, camera_id, task_uuid)
-    
-    sys.exit(0)
+    try:
+        global existing_mem
+        print("\n[Reader] SIGTERM received. Cleaning up shared and temp memory...")
+        #Clean up all task-related recordings
+        for cam_task_key in last_capture_time.keys():
+            if '_' in cam_task_key:
+                camera_id, task_uuid = cam_task_key.rsplit('_', 1)
+                clear_recordings(TASK_ID, task_uuid, camera_id)          
+        if 'existing_mem' in globals() and existing_mem:
+            existing_mem.close()  #Close but DO NOT unlink
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+    finally:
+        sys.exit(0)
 
 def on_message(message):
     global existing_mem
@@ -35,7 +38,7 @@ def on_message(message):
     camera_id = data.get('camera_id')
     task_uuid = data.get('uuid')
     task_settings = data.get('task_settings', {})
-    task_settings["task_uuid"] = task_uuid  # Add task_uuid to settings for use in detect_objects
+    task_settings["task_uuid"] = task_uuid  #Add task_uuid to settings for use in detect_objects
     frame_shape = data.get('frame_shape')
     try:
         existing_mem = shm.SharedMemory(name=f'{task_uuid}_frame')

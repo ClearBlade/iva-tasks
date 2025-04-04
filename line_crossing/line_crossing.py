@@ -6,6 +6,8 @@ import numpy as np
 DIRECTION_A_TO_B = "A_TO_B"
 DIRECTION_B_TO_A = "B_TO_A"
 
+UI_SCALE = [360, 640]
+
 def line_intersects_box(line, box):
     line = LineString(line)
     box = Polygon([(box[0], box[1]), (box[2], box[1]), (box[2], box[3]), (box[0], box[3])])
@@ -141,6 +143,18 @@ def choose_colors(image, box_coordinates):
     else:
         colors['text_color'] = (0, 0, 0) #Black text for light backgrounds
     return colors
+
+def rescale_line(line, target_shape, current_shape):
+    x1, y1, x2, y2 = line
+    #Calculate width and height scaling factors directly
+    width_scale = target_shape[1] / current_shape[1]
+    height_scale = target_shape[0] / current_shape[0]
+    #Apply scaling to each coordinate
+    scaled_x1 = int(x1 * width_scale)
+    scaled_y1 = int(y1 * height_scale)
+    scaled_x2 = int(x2 * width_scale)
+    scaled_y2 = int(y2 * height_scale)
+    return [scaled_x1, scaled_y1, scaled_x2, scaled_y2]
 
 class CameraTracker:
     def __init__(self, initial_frame, frame_shape, line):

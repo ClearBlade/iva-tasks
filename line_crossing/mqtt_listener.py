@@ -9,7 +9,7 @@ import sys
 
 from clearblade_mqtt_library import AdapterLibrary
 from dotenv import load_dotenv
-from line_crossing import CameraTracker, DIRECTION_A_TO_B, DIRECTION_B_TO_A
+from line_crossing import rescale_line, CameraTracker, DIRECTION_A_TO_B, DIRECTION_B_TO_A, UI_SCALE
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from recording_utils import clear_recordings
@@ -22,12 +22,20 @@ last_capture_time = {}
 camera_trackers = {}
 
 def handle_sigterm(signum, frame):
-    global existing_mem
-    print("\n[Reader] SIGTERM received. Cleaning up shared and temp memory...")          
-    if existing_mem:
-        existing_mem.close()  #Close but DO NOT unlink
-    clear_recordings(TASK_ID)
-    sys.exit(0)
+    try:
+        global existing_mem
+        print("\n[Reader] SIGTERM received. Cleaning up shared and temp memory...")
+        #Clean up all task-related recordings
+        for cam_task_key in last_capture_time.keys():
+            if '_' in cam_task_key:
+                camera_id, task_uuid = cam_task_key.rsplit('_', 1)
+                clear_recordings(TASK_ID, task_uuid, camera_id)          
+        if 'existing_mem' in globals() and existing_mem:
+            existing_mem.close()  #Close but DO NOT unlink
+    except Exception as e:
+        print(f"Error during cleanup: {e}")
+    finally:
+        sys.exit(0)
 
 def on_message(message):
     global existing_mem
@@ -38,8 +46,9 @@ def on_message(message):
     capture_key = f"{camera_id}_{task_uuid}"
     objects = task_settings.get('objects_to_detect', [])
     objects_to_detect = [obj for obj, settings in objects.items() if settings.get('enable_tracking', False)]
-    x1, y1, x2, y2 = task_settings.get('line')
-    line = [[x1, y1], [x2, y2]]
+    frame_shape = data.get('frame_shape')
+    scaled_line = rescale_line(task_settings.get('line'), frame_shape, UI_SCALE)
+    line = [[scaled_line[0], scaled_line[1]], [scaled_line[2], scaled_line[3]]]
     
     if len(objects_to_detect) == 0:
         print('Invalid task settings: No objects have tracking enabled')

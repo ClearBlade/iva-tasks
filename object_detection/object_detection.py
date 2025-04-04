@@ -288,7 +288,7 @@ def apply_blur(image, boxes):
         result = pixelate(result, mask, mask_bbox, block_size)
     return result
 
-def get_detections(results, class_assignments, objects_settings):
+def get_detections(results, class_assignments, objects_settings, original_shape, compressed_shape):
     detections = []
     bboxes = {}
     confidence_scores = {}
@@ -302,7 +302,7 @@ def get_detections(results, class_assignments, objects_settings):
                 confidence_score = detection.conf.item()
                 if confidence_score > objects_settings[class_label].get("confidence_threshold", 0.55):
                     x1, y1, x2, y2 = map(int, detection.xyxy[0].tolist())
-                    bbox = [x1, y1, x2, y2]
+                    bbox = rescale_bbox([x1, y1, x2, y2], original_shape, compressed_shape)
                     if objects_settings[class_label].get("enable_tracking", False):
                         yolo_id = int(detection.id.item() if detection.id is not None else untracked_id)
                         if yolo_id < 1:
@@ -406,6 +406,22 @@ def get_total_objects(bboxes):
         total_objects += len(bbox) if isinstance(bbox[0], list) else 1
     return total_objects
 
+def resize_for_inference(input_frame, target_shape):
+    #Resize the input frame to the target shape for faster inference
+    return cv2.resize(input_frame, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_AREA)
+
+def rescale_bbox(bbox, original_shape, compressed_shape):
+    x1, y1, x2, y2 = bbox
+    #Calculate width and height scaling factors directly
+    width_scale = original_shape[1] / compressed_shape[1]
+    height_scale = original_shape[0] / compressed_shape[0]
+    #Apply scaling to each coordinate
+    scaled_x1 = int(x1 * width_scale)
+    scaled_y1 = int(y1 * height_scale)
+    scaled_x2 = int(x2 * width_scale)
+    scaled_y2 = int(y2 * height_scale)
+    return [scaled_x1, scaled_y1, scaled_x2, scaled_y2]
+
 def detect_objects(camera_id, task_settings, input_frame, frame_shape, roi=None):
     if roi is not None:
         input_frame = input_frame[roi[1]:roi[3], roi[0]:roi[2]]
@@ -425,15 +441,20 @@ def detect_objects(camera_id, task_settings, input_frame, frame_shape, roi=None)
 
     needs_blur = any(obj in blur_enabled_objects for obj in supported_blur_classes)
     
-    model, id_tracker = get_model_and_tracker(camera_id, task_uuid, class_assignments, enable_tracking)    
+    model, id_tracker = get_model_and_tracker(camera_id, task_uuid, class_assignments, enable_tracking)
+    
+    #Resize input_frame to smaller dimensions for faster inference
+    compressed_shape = [360, 640]
+    compressed_input_frame = resize_for_inference(input_frame, compressed_shape)
+    
     if enable_tracking:
-        results = model.track(input_frame, persist=True, verbose=False)
+        results = model.track(compressed_input_frame, persist=True, verbose=False)
     else:
-        results = model(input_frame, verbose=False)
+        results = model(compressed_input_frame, verbose=False)
 
     colorPalette = get_colors(camera_id, task_uuid, annotated_objects, input_frame, frame_shape)
     
-    detections, bboxes, objects_detected, confidence_scores = get_detections(results, class_assignments, objects_settings)
+    detections, bboxes, objects_detected, confidence_scores = get_detections(results, class_assignments, objects_settings, frame_shape, compressed_shape)
     
     bboxes, confidence_scores = update_tracker(objects_settings, id_tracker, detections, bboxes, confidence_scores)
     
@@ -465,7 +486,7 @@ if __name__ == '__main__':
         os.environ['CB_SYSTEM_KEY'] = "test_system_key"
         
         #Test video path - update this path to your test video
-        video_path = os.path.abspath('/Users/Drew5/Desktop/DEV/IVATesting2/new-iva-adapter/new-iva-adapter/tests/worker-zone-detection.mp4')
+        video_path = os.path.abspath('/path/to/your/video.mp4')
         
         #Open the test video
         cap = cv2.VideoCapture(video_path)
