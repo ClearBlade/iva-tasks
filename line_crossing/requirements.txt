@@ -1,0 +1,5 @@
+numpy==1.26.4
+clearblade
+python-dotenv
+shapely==2.0.7
+opencv-python==4.11.0.86
