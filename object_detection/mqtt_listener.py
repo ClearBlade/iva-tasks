@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from dotenv import load_dotenv
 
-from clearblade_mqtt_library import AdapterLibrary
 from object_detection import detect_objects
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

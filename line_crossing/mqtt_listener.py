@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 from dotenv import load_dotenv
 
-from clearblade_mqtt_library import AdapterLibrary
 from line_crossing import (DIRECTION_A_TO_B, DIRECTION_B_TO_A, UI_SCALE,
                            CameraTracker, rescale_line)
 
