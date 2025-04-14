@@ -12,7 +12,7 @@ from clearblade.ClearBladeCore import Query, System, cbLogs
 class AdapterLibrary:
 
     DEFAULT_LOG_LEVEL = "info"
-    DEFAULT_PLATFORM_URL = "http://localhost:9001"
+    DEFAULT_PLATFORM_URL = "http://localhost:9000"
     DEFAULT_MESSAGING_URL = "localhost:1883"
     DEFAULT_ADAPTER_CONFIG_COLLECTION_NAME = "adapter_config"
     CONNECTED_FLAG = False
@@ -90,7 +90,7 @@ class AdapterLibrary:
         cbLogs.info(
             "AdapterLibrary - connect_MQTT - Initializing the ClearBlade MQTT message broker")
         self._cb_mqtt = self._cb_system.Messaging(
-            self._device_client, client_id=self.adapter_name + "-" + str(random.randint(0, 10000)), port=1885)
+            self._device_client, client_id=self.adapter_name + "-" + str(random.randint(0, 10000)))
         self._cb_mqtt.on_connect = self.__on_MQTT_connect
         self._cb_mqtt.on_disconnect = self.__on_MQTT_disconnect
         # if topic != "":
