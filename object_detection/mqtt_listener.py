@@ -58,102 +58,102 @@ def on_message(message):
         image_with_bboxes, bboxes, objects_detected, total_objects = detect_objects(camera_id, task_settings, image_copy, frame_shape)
         #Write back to shared memory
         existing_mem.buf[:image_with_bboxes.nbytes] = image_with_bboxes.tobytes()
+
+        data[f"{TASK_ID}_output"] = {
+            "bboxes": bboxes,
+            "objects_detected": objects_detected,
+            "total_objects_detected": total_objects,
+            "saved_path": None
+        }
+        
+        if data.get('task_id', TASK_ID) == TASK_ID:
+            from recording_utils import (LastCaptureTime, adjust_resolution,
+                                        handle_snapshot_recording,
+                                        process_task_settings)
+            
+            event = (len(objects_detected) > 0 and total_objects > 0)
+            
+            settings = process_task_settings(task_settings)
+            
+            capture_key = f"{camera_id}_{task_uuid}"
+            if capture_key not in last_capture_time:
+                last_capture_time[capture_key] = LastCaptureTime()
+                last_capture_time[capture_key].last_video_capture = time.time() - settings['clip_length']
+                clear_recordings(TASK_ID, task_uuid, camera_id)
+            
+            if settings['needs_video']:
+                annotated_uuid = f"{task_uuid}_annotated"
+                
+                from recording_utils import (add_to_shared_memory,
+                                            handle_event_recording,
+                                            setup_event_recording)
+
+                #Save the annotated image to shared memory
+                add_to_shared_memory(annotated_uuid, image_with_bboxes)
+                
+                cache_base_path = setup_event_recording(
+                    camera_id,
+                    annotated_uuid,
+                    settings['recording_lead_time'],
+                    settings['clip_length'],
+                    adapter,
+                    TASK_ID,
+                    settings['resolution'],
+                    frame_shape
+                )
+                
+                last_capture_time[capture_key].last_video_capture = handle_event_recording(
+                    camera_id,
+                    event,
+                    last_capture_time[capture_key].last_video_capture,
+                    settings['recording_lead_time'],
+                    settings['clip_length'],
+                    cache_base_path,
+                    settings['root_path'],
+                    'mp4',
+                    TASK_ID,
+                    task_uuid,  #Use original task_uuid for saving the output
+                    data[f"{TASK_ID}_output"]
+                )
+                            
+            elif settings['needs_snapshot']:
+                if not hasattr(last_capture_time[capture_key], 'last_snapshot') or last_capture_time[capture_key].last_snapshot is None:
+                    last_capture_time[capture_key].last_snapshot = time.time() - settings['retrigger_delay']
+                    
+                last_capture_time[capture_key].last_snapshot, saved_path = handle_snapshot_recording(
+                    camera_id,
+                    event,
+                    last_capture_time[capture_key].last_snapshot,
+                    settings['retrigger_delay'],
+                    settings['root_path'],
+                    settings['file_type'],
+                    TASK_ID,
+                    task_uuid
+                )
+                
+                if saved_path:
+                    cv2.imwrite(saved_path, adjust_resolution(image_with_bboxes, settings['resolution']))
+                    print(f'snapshot saved to {saved_path}')
+                    data[f"{TASK_ID}_output"]["saved_path"] = saved_path
+                    
+            elif settings['file_type'] != '':
+                print(f'Unsupported file type: {settings["file_type"]}')
+                
+        publish_path = data.get('publish_path')
+        if len(publish_path) > 1:
+            publish_path.remove(INPUT_TOPIC)
+            adapter.publish(publish_path[0], json.dumps(data))
+        else:
+            print('publishing to output topic', f'task/{TASK_ID}/output/{camera_id}')
+            output_topic = f'task/{TASK_ID}/output/{camera_id}'
+            adapter.publish(output_topic, json.dumps(data))
+            print('published message')
     except Exception as e:
         print(f"Error processing frame: {e}")
     finally:
         #Always close the shared memory
         if 'existing_mem' in locals() and existing_mem:
             existing_mem.close()
-
-    data[f"{TASK_ID}_output"] = {
-        "bboxes": bboxes,
-        "objects_detected": objects_detected,
-        "total_objects_detected": total_objects,
-        "saved_path": None
-    }
-    
-    if data.get('task_id', TASK_ID) == TASK_ID:
-        from recording_utils import (LastCaptureTime, adjust_resolution,
-                                     handle_snapshot_recording,
-                                     process_task_settings)
-        
-        event = (len(objects_detected) > 0 and total_objects > 0)
-        
-        settings = process_task_settings(task_settings)
-        
-        capture_key = f"{camera_id}_{task_uuid}"
-        if capture_key not in last_capture_time:
-            last_capture_time[capture_key] = LastCaptureTime()
-            last_capture_time[capture_key].last_video_capture = time.time() - settings['clip_length']
-            clear_recordings(TASK_ID, task_uuid, camera_id)
-        
-        if settings['needs_video']:
-            annotated_uuid = f"{task_uuid}_annotated"
-            
-            from recording_utils import (add_to_shared_memory,
-                                         handle_event_recording,
-                                         setup_event_recording)
-
-            #Save the annotated image to shared memory
-            add_to_shared_memory(annotated_uuid, image_with_bboxes)
-            
-            cache_base_path = setup_event_recording(
-                camera_id,
-                annotated_uuid,
-                settings['recording_lead_time'],
-                settings['clip_length'],
-                adapter,
-                TASK_ID,
-                settings['resolution'],
-                frame_shape
-            )
-            
-            last_capture_time[capture_key].last_video_capture = handle_event_recording(
-                camera_id,
-                event,
-                last_capture_time[capture_key].last_video_capture,
-                settings['recording_lead_time'],
-                settings['clip_length'],
-                cache_base_path,
-                settings['root_path'],
-                'mp4',
-                TASK_ID,
-                task_uuid,  #Use original task_uuid for saving the output
-                data[f"{TASK_ID}_output"]
-            )
-                        
-        elif settings['needs_snapshot']:
-            if not hasattr(last_capture_time[capture_key], 'last_snapshot') or last_capture_time[capture_key].last_snapshot is None:
-                last_capture_time[capture_key].last_snapshot = time.time() - settings['retrigger_delay']
-                
-            last_capture_time[capture_key].last_snapshot, saved_path = handle_snapshot_recording(
-                camera_id,
-                event,
-                last_capture_time[capture_key].last_snapshot,
-                settings['retrigger_delay'],
-                settings['root_path'],
-                settings['file_type'],
-                TASK_ID,
-                task_uuid
-            )
-            
-            if saved_path:
-                cv2.imwrite(saved_path, adjust_resolution(image_with_bboxes, settings['resolution']))
-                print(f'snapshot saved to {saved_path}')
-                data[f"{TASK_ID}_output"]["saved_path"] = saved_path
-                
-        elif settings['file_type'] != '':
-            print(f'Unsupported file type: {settings["file_type"]}')
-            
-    publish_path = data.get('publish_path')
-    if len(publish_path) > 1:
-        publish_path.remove(INPUT_TOPIC)
-        adapter.publish(publish_path[0], json.dumps(data))
-    else:
-        print('publishing to output topic', f'task/{TASK_ID}/output/{camera_id}')
-        output_topic = f'task/{TASK_ID}/output/{camera_id}'
-        adapter.publish(output_topic, json.dumps(data))
-        print('published message')
         
 signal.signal(signal.SIGTERM, handle_sigterm)
 
