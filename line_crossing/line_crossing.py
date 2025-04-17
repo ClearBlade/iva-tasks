@@ -3,8 +3,8 @@ from shapely.geometry import LineString, Polygon, Point
 from collections import defaultdict
 import numpy as np
 
-DIRECTION_A_TO_B = "A_TO_B"
-DIRECTION_B_TO_A = "B_TO_A"
+DIRECTION_A_TO_B = "A_to_B"
+DIRECTION_B_TO_A = "B_to_A"
 
 UI_SCALE = [360, 640]
 
