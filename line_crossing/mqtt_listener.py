@@ -108,7 +108,77 @@ def on_message(message):
                 "saved_path": None
             }
             existing_mem.buf[:drawn_frame_with_line.nbytes] = drawn_frame_with_line.tobytes()
+                
+        if data.get('task_id', TASK_ID) == TASK_ID:
+            from recording_utils import (LastCaptureTime, adjust_resolution,
+                                        handle_snapshot_recording,
+                                        process_task_settings)
             
+            settings = process_task_settings(task_settings)
+            
+            if capture_key not in last_capture_time:
+                last_capture_time[capture_key] = LastCaptureTime()
+                last_capture_time[capture_key].last_video_capture = time.time() - settings['clip_length']
+                clear_recordings(TASK_ID, task_uuid, camera_id)
+            
+            if settings['needs_video']:
+                scheduled_video_uuid = task_uuid + '_annotated'
+                
+                from recording_utils import (add_to_shared_memory,
+                                            handle_event_recording,
+                                            setup_event_recording)
+                
+                add_to_shared_memory(scheduled_video_uuid, drawn_frame_with_line)
+                
+                cache_base_path = setup_event_recording(
+                    camera_id,
+                    scheduled_video_uuid,
+                    settings['recording_lead_time'],
+                    settings['clip_length'],
+                    adapter,
+                    TASK_ID,
+                    settings['resolution'],
+                    frame_shape
+                )
+                
+                last_capture_time[capture_key].last_video_capture = handle_event_recording(
+                    camera_id,
+                    event,
+                    last_capture_time[capture_key].last_video_capture,
+                    settings['recording_lead_time'],
+                    settings['clip_length'],
+                    cache_base_path,
+                    settings['root_path'],
+                    'mp4',
+                    TASK_ID,
+                    task_uuid,
+                    data.get(f"{TASK_ID}_output", {})
+                )
+                
+            elif settings['needs_snapshot']:
+                if not hasattr(last_capture_time[capture_key], 'last_snapshot') or last_capture_time[capture_key].last_snapshot is None:
+                    last_capture_time[capture_key].last_snapshot = time.time() - settings['retrigger_delay']
+                    
+                last_capture_time[capture_key].last_snapshot, saved_path = handle_snapshot_recording(
+                    camera_id,
+                    event,
+                    last_capture_time[capture_key].last_snapshot,
+                    settings['retrigger_delay'],
+                    settings['root_path'],
+                    settings['file_type'],
+                    TASK_ID,
+                    task_uuid
+                )
+                
+                if saved_path:
+                    cv2.imwrite(saved_path, adjust_resolution(drawn_frame_with_line, settings['resolution']))
+                    print(f'snapshot saved to {saved_path}')
+                    data[f"{TASK_ID}_output"]["saved_path"] = saved_path
+                    
+            elif settings['file_type'] != '':
+                print(f'Unsupported file type: {settings["file_type"]}')
+            
+        adapter.publish(output_topic, json.dumps(data))
     except Exception as e:
         print(f"Error processing frame: {e}")
         
@@ -116,77 +186,6 @@ def on_message(message):
         #Always close the shared memory
         if 'existing_mem' in locals() and existing_mem:
             existing_mem.close()
-    
-    if data.get('task_id', TASK_ID) == TASK_ID:
-        from recording_utils import (LastCaptureTime, adjust_resolution,
-                                     handle_snapshot_recording,
-                                     process_task_settings)
-        
-        settings = process_task_settings(task_settings)
-        
-        if capture_key not in last_capture_time:
-            last_capture_time[capture_key] = LastCaptureTime()
-            last_capture_time[capture_key].last_video_capture = time.time() - settings['clip_length']
-            clear_recordings(TASK_ID, task_uuid, camera_id)
-        
-        if settings['needs_video']:
-            scheduled_video_uuid = task_uuid + '_annotated'
-            
-            from recording_utils import (add_to_shared_memory,
-                                         handle_event_recording,
-                                         setup_event_recording)
-            
-            add_to_shared_memory(scheduled_video_uuid, drawn_frame_with_line)
-            
-            cache_base_path = setup_event_recording(
-                camera_id,
-                scheduled_video_uuid,
-                settings['recording_lead_time'],
-                settings['clip_length'],
-                adapter,
-                TASK_ID,
-                settings['resolution'],
-                frame_shape
-            )
-            
-            last_capture_time[capture_key].last_video_capture = handle_event_recording(
-                camera_id,
-                event,
-                last_capture_time[capture_key].last_video_capture,
-                settings['recording_lead_time'],
-                settings['clip_length'],
-                cache_base_path,
-                settings['root_path'],
-                'mp4',
-                TASK_ID,
-                task_uuid,
-                data.get(f"{TASK_ID}_output", {})
-            )
-            
-        elif settings['needs_snapshot']:
-            if not hasattr(last_capture_time[capture_key], 'last_snapshot') or last_capture_time[capture_key].last_snapshot is None:
-                last_capture_time[capture_key].last_snapshot = time.time() - settings['retrigger_delay']
-                
-            last_capture_time[capture_key].last_snapshot, saved_path = handle_snapshot_recording(
-                camera_id,
-                event,
-                last_capture_time[capture_key].last_snapshot,
-                settings['retrigger_delay'],
-                settings['root_path'],
-                settings['file_type'],
-                TASK_ID,
-                task_uuid
-            )
-            
-            if saved_path:
-                cv2.imwrite(saved_path, adjust_resolution(drawn_frame_with_line, settings['resolution']))
-                print(f'snapshot saved to {saved_path}')
-                data[f"{TASK_ID}_output"]["saved_path"] = saved_path
-                
-        elif settings['file_type'] != '':
-            print(f'Unsupported file type: {settings["file_type"]}')
-        
-    adapter.publish(output_topic, json.dumps(data))
     
 signal.signal(signal.SIGTERM, handle_sigterm)
 
