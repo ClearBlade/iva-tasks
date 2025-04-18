@@ -8,12 +8,12 @@ from multiprocessing import shared_memory as shm
 import numpy as np
 from dotenv import load_dotenv
 
-from scheduled_video_capture import save_frame
+from scheduled_recording import save_frame
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from clearblade_mqtt_library import AdapterLibrary
 
-TASK_ID = 'scheduled_video_capture'
+TASK_ID = 'scheduled_recording'
 existing_mem = None  #Global variable for shared memory
 
 def handle_sigterm(signum, frame):

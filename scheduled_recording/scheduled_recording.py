@@ -322,7 +322,7 @@ if __name__ == '__main__':
             task_settings["timestamp"] = sim_timestamp.isoformat()
             
             #Call save_frame with the current frame
-            result = save_frame(frame, camera_id, task_uuid, task_settings, "scheduled_video_capture")
+            result = save_frame(frame, camera_id, task_uuid, task_settings, "scheduled_recording")
             
             if result:
                 print(f"Video saved to: {result}")
