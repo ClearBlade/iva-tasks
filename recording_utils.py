@@ -32,7 +32,7 @@ SUPPORTED_IMAGE_FILE_TYPES = ['png', 'jpg']
 def clear_recordings(task_id, task_uuid='*', camera_id='*'):
     """Find and delete all directories/files in both temp and cache locations"""
     temp_pattern = os.path.join(TEMP_DIR, SYSTEM_KEY, camera_id, task_id, task_uuid)
-    cache_pattern = os.path.join(RECORDINGS_CACHE_DIR, SYSTEM_KEY, task_id, "outbox", camera_id, "scheduled_video_capture", f"{task_uuid}_annotated")
+    cache_pattern = os.path.join(RECORDINGS_CACHE_DIR, SYSTEM_KEY, task_id, "outbox", camera_id, "scheduled_recording", f"{task_uuid}_annotated")
 
     remove_files(temp_pattern)
     remove_files(cache_pattern)
@@ -375,8 +375,8 @@ def process_task_settings(task_settings):
     return processed
 
 def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter, quality, frame_shape):
-    """Trigger scheduled_video_capture to create a continuous cache of clips"""
-    #Create settings for scheduled_video_capture with root_path as object
+    """Trigger scheduled_recording to create a continuous cache of clips"""
+    #Create settings for scheduled_recording with root_path as object
     cache_dir = {
         "path": RECORDINGS_CACHE_DIR, 
         "id": task_id
@@ -393,7 +393,7 @@ def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter
         "start_time": "2020-01-01T00:00:00.000Z"
     }
    
-    #Create message to send to scheduled_video_capture
+    #Create message to send to scheduled_recording
     message = {
         "camera_id": camera_id,
         "uuid": f"{task_uuid}",
@@ -402,13 +402,13 @@ def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter
         "publish_path": []  #No need to publish the output
     }
    
-    #Send to scheduled_video_capture
-    adapter.publish('task/scheduled_video_capture/input', json.dumps(message))
+    #Send to scheduled_recording
+    adapter.publish('task/scheduled_recording/input', json.dumps(message))
 
 def setup_event_recording(camera_id, task_uuid, recording_lead_time, clip_length, adapter, task_id, quality, frame_shape):
     """Set up event recording for a camera"""
     #incoming task_uuid should end with '_annotated'
-    cache_base_path = os.path.join(RECORDINGS_CACHE_DIR, SYSTEM_KEY, task_id, "outbox", camera_id, 'scheduled_video_capture', task_uuid)
+    cache_base_path = os.path.join(RECORDINGS_CACHE_DIR, SYSTEM_KEY, task_id, "outbox", camera_id, 'scheduled_recording', task_uuid)
    
     setup_temp_dir(camera_id, task_id, task_uuid.split('_annotated')[0])
    
