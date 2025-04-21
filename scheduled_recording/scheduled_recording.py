@@ -4,9 +4,9 @@ import cv2
 import dateutil.parser as parser
 
 TIME_UNITS = {
-    "Minutes": 60,
-    "Hours": 3600,
-    "Days": 86400
+    "minutes": 60,
+    "hours": 3600,
+    "days": 86400
 }
 
 #Class to manage video capture sessions for multiple cameras
@@ -215,12 +215,12 @@ def save_frame(frame, camera_id, task_uuid, task_settings, task_id):
     file_type = task_settings.get("file_type", "mp4")
     resolution = task_settings.get("resolution", "Lowest")
     interval = int(task_settings.get("interval", 3600))
-    interval_units = task_settings.get("interval_units", "Seconds")
-    if interval_units != "Seconds":
+    interval_units = task_settings.get("units", "seconds").lower()
+    if interval_units != "seconds":
         interval *= TIME_UNITS.get(interval_units, 1)
     duration = int(task_settings.get("clip_length", interval))
-    duration_units = task_settings.get("clip_length_units", "Seconds")
-    if duration_units != "Seconds":
+    duration_units = task_settings.get("clip_length_units", "seconds").lower()
+    if duration_units != "seconds":
         duration *= TIME_UNITS.get(duration_units, 1)
     start_time = task_settings.get("start_time", datetime.now(timezone.utc).isoformat())
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -274,7 +274,7 @@ if __name__ == '__main__':
         "file_type": "mp4",
         "resolution": "Original",
         "interval": "10",  # in seconds
-        "interval_units": "Seconds",
+        "units": "Seconds",
         "clip_length": "5",
         "clip_length_units": "Seconds",
         "start_time": start_time.isoformat(),

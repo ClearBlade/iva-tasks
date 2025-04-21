@@ -22,9 +22,9 @@ class LastCaptureTime:
         self.last_snapshot = None
         
 TIME_UNITS = {
-    'Minutes': 60,
-    'Hours': 3600,
-    'Days': 86400
+    'minutes': 60,
+    'hours': 3600,
+    'days': 86400
 }
 
 SUPPORTED_IMAGE_FILE_TYPES = ['png', 'jpg']
@@ -359,14 +359,14 @@ def process_task_settings(task_settings):
     processed['file_type'] = task_settings.get('file_type', '').lower()
     
     clip_length = int(task_settings.get('clip_length', 0))
-    clip_length_units = task_settings.get('clip_length_units', 'Seconds')
+    clip_length_units = task_settings.get('clip_length_units', 'seconds').lower()
     processed['clip_length'] = clip_length * TIME_UNITS.get(clip_length_units, 1)
     
     retrigger_delay = int(task_settings.get('retrigger_delay', 15))
-    retrigger_delay_units = task_settings.get('retrigger_delay_units', 'Seconds')
+    retrigger_delay_units = task_settings.get('retrigger_delay_units', 'seconds').lower()
     processed['retrigger_delay'] = retrigger_delay * TIME_UNITS.get(retrigger_delay_units, 1)
     
-    processed['recording_lead_time'] = int(task_settings.get('recording_lead_time', 10) * TIME_UNITS.get(task_settings.get('recording_lead_time_units', 'Seconds'), 1))
+    processed['recording_lead_time'] = int(task_settings.get('recording_lead_time', 10) * TIME_UNITS.get(task_settings.get('recording_lead_time_units', 'seconds').lower(), 1))
     
     processed['resolution'] = task_settings.get('resolution', 'Lowest')
     
@@ -387,9 +387,9 @@ def trigger_scheduled_recording(camera_id, task_uuid, task_id, interval, adapter
         "file_type": "mp4",
         "resolution": quality,
         "interval": interval,
-        "interval_units": "Seconds",
+        "units": "seconds",
         "clip_length": interval,
-        "clip_length_units": "Seconds",
+        "clip_length_units": "seconds",
         "start_time": "2020-01-01T00:00:00.000Z"
     }
    
