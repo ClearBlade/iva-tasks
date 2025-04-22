@@ -50,9 +50,13 @@ def on_message(message):
 
     existing_mem.close()
     
-    data[f"{TASK_ID}_output"] = {
-        "saved_path": path,
-    }
+    if path:
+        root_path = task_settings.get("root_path")
+        data[f"{TASK_ID}_output"] = {
+            "saved_path": path.replace(root_path['path'], ''),
+        }
+    else:
+        data[f"{TASK_ID}_output"] = {}
 
     publish_path = data.get('publish_path')
     publish_path.remove(input_topic)

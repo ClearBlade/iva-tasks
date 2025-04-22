@@ -104,8 +104,7 @@ def on_message(message):
             data[f"{TASK_ID}_output"] = {
                 "direction": None,
                 "crossing": False,
-                "classification": None,
-                "saved_path": None
+                "classification": None
             }
             existing_mem.buf[:drawn_frame_with_line.nbytes] = drawn_frame_with_line.tobytes()
                 

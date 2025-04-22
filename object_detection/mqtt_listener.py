@@ -62,8 +62,7 @@ def on_message(message):
         data[f"{TASK_ID}_output"] = {
             "bboxes": bboxes,
             "objects_detected": objects_detected,
-            "total_objects_detected": total_objects,
-            "saved_path": None
+            "total_objects_detected": total_objects
         }
         
         if data.get('task_id', TASK_ID) == TASK_ID:

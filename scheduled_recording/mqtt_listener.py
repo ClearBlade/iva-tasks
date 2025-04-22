@@ -68,13 +68,12 @@ def on_message(message):
     
     if path:
         print(f'VIDEO SAVED TO: {path}')
+        root_path = task_settings.get('root_path')
         data[f"{TASK_ID}_output"] = {
-            "saved_path": path,
+            "saved_path":  path.replace(root_path['path'], ''),
         }
     else:
-        data[f"{TASK_ID}_output"] = {
-            "saved_path": None,
-        }
+        data[f"{TASK_ID}_output"] = {}
 
     publish_path = data.get('publish_path', [])
     if input_topic in publish_path:
