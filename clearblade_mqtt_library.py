@@ -142,6 +142,7 @@ class AdapterLibrary:
             self._args[self.DEVICE_NAME_ARG_KEY], self._args[self.ACTIVE_KEY_ARG_KEY])
 
     def __fetch_adapter_config(self):
+        return {}
         cbLogs.info(
             "AdapterLibrary - __fetch_adapter_config - Retrieving adapter config")
 
