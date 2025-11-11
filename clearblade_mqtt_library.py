@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import platform
 import random
 import sys
 import time
@@ -9,11 +10,20 @@ import time
 from clearblade.ClearBladeCore import Query, System, cbLogs
 
 
+def _get_default_host():
+    """Returns 'host.docker.internal' on macOS, 'localhost' on Linux/other platforms."""
+    system = platform.system().lower()
+    if system == 'darwin':  # macOS
+        return 'host.docker.internal'
+    else:  # Linux, Windows, etc.
+        return 'localhost'
+
+
 class AdapterLibrary:
 
     DEFAULT_LOG_LEVEL = "info"
-    DEFAULT_PLATFORM_URL = "http://localhost:9000"
-    DEFAULT_MESSAGING_URL = "localhost:1883"
+    DEFAULT_PLATFORM_URL = f"http://{_get_default_host()}:9000"
+    DEFAULT_MESSAGING_URL = f"{_get_default_host()}:1883"
     DEFAULT_ADAPTER_CONFIG_COLLECTION_NAME = "adapter_config"
     CONNECTED_FLAG = False
 
