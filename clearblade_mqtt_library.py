@@ -12,8 +12,9 @@ from clearblade.ClearBladeCore import Query, System, cbLogs
 
 def _get_default_host():
     """Returns 'host.docker.internal' on macOS, 'localhost' on Linux/other platforms."""
-    system = platform.system().lower()
-    if system == 'darwin':  # macOS
+    env = os.environ
+    hostname = env.get('CB_HOSTNAME')
+    if hostname == 'Darwin':  # macOS
         return 'host.docker.internal'
     else:  # Linux, Windows, etc.
         return 'localhost'
